@@ -1,4 +1,4 @@
-/* global Anchor */
+/* global Anchor, I18n */
 'use strict';
 
 /*
@@ -6,6 +6,7 @@
  * - Tracks time on the active tab of the focused window (pooled per group, per hour bucket).
  * - Redirects blocked navigations to the block page and sweeps open tabs when limits kick in.
  * - Handles temporary bypasses requested from the UI.
+ * - Answers on-page reminder status requests from the content script.
  *
  * Settings are written by the UI pages; the background only writes `state`.
  */
@@ -18,7 +19,7 @@ const IDLE_SECONDS = 10 * 60;
 
 async function load() {
   const { settings, state } = await browser.storage.local.get(['settings', 'state']);
-  return { settings: settings || Anchor.defaultSettings(), state: Anchor.normalizeState(state) };
+  return { settings: Anchor.normalizeSettings(settings), state: Anchor.normalizeState(state) };
 }
 
 const saveState = (state) => browser.storage.local.set({ state });
@@ -155,8 +156,9 @@ async function handleBypass(groupId) {
     const now = Date.now();
     const { settings, state } = await load();
     const group = settings.groups.find((g) => g.id === groupId);
-    if (!group || !group.bypass.enabled) return { ok: false, error: 'Bypass is turned off for this group.' };
-    if (Anchor.bypassUsesLeft(group, state, now) <= 0) return { ok: false, error: 'No bypasses left for this period.' };
+    // Errors are i18n keys; the page that asked translates them.
+    if (!group || !group.bypass.enabled) return { ok: false, error: 'errBypassOff' };
+    if (Anchor.bypassUsesLeft(group, state, now) <= 0) return { ok: false, error: 'errNoBreaks' };
     const bp = (state.bypass[groupId] = state.bypass[groupId] || { until: 0, uses: [] });
     bp.until = now + group.bypass.minutes * 60000;
     bp.uses.push(now);
@@ -174,8 +176,35 @@ async function handleEndBypass(groupId) {
   });
 }
 
+/** What the on-page reminder needs to know about the page it runs on. */
+async function pageStatus(url) {
+  const now = Date.now();
+  const { settings, state } = await load();
+  const { active } = await browser.storage.session.get('active');
+  // Include the slice still in progress, so a countdown starts from the true remaining time.
+  const pending = active && active.url === url ? Math.min(now - active.start, MAX_SLICE_MS) / 1000 : 0;
+  const { matches } = Anchor.evaluateUrl(url, settings, state, now);
+  return {
+    now,
+    language: settings.language,
+    groups: matches.filter((m) => m.enabled && !m.blocked).map((m) => ({
+      id: m.group.id,
+      name: m.group.name,
+      color: m.group.color,
+      reminders: m.group.reminders,
+      period: m.group.limit.period,
+      remaining: m.remaining === null ? null : Math.max(0, m.remaining - Math.max(0, pending)),
+      bypassUntil: m.bypassUntil,
+      blockedAfterBreak: !!m.reason,
+      scheduleStart: m.reason ? null : Anchor.nextScheduleChange(m.group.schedule, now),
+    })),
+  };
+}
+
 browser.runtime.onMessage.addListener((msg) => {
   switch (msg && msg.type) {
+    case 'pageStatus':
+      return pageStatus(msg.url);
     case 'bypass':
       return handleBypass(msg.groupId).then((r) => (tick(), r));
     case 'endBypass':
@@ -190,7 +219,11 @@ browser.runtime.onMessage.addListener((msg) => {
 // ---------- Wiring ----------
 
 browser.tabs.onActivated.addListener(() => tick());
-browser.tabs.onUpdated.addListener(() => tick(), { properties: ['url'] });
+browser.tabs.onUpdated.addListener((tabId) => {
+  tick();
+  // Single-page sites change URL without reloading; let the on-page reminder re-check.
+  browser.tabs.sendMessage(tabId, { type: 'recheck' }).catch(() => {});
+}, { properties: ['url'] });
 browser.windows.onFocusChanged.addListener(() => tick());
 browser.alarms.onAlarm.addListener(() => tick());
 
@@ -209,6 +242,7 @@ function setup() {
 browser.runtime.onStartup.addListener(setup);
 browser.runtime.onInstalled.addListener(async ({ reason }) => {
   const { settings } = await browser.storage.local.get('settings');
+  I18n.setLanguage('auto'); // default group names follow the Firefox language
   if (!settings) await browser.storage.local.set({ settings: Anchor.defaultSettings() });
   setup();
   if (reason === 'install') browser.runtime.openOptionsPage();

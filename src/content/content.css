@@ -1,0 +1,49 @@
+/* Anchor on-page reminders. Custom element names and a full reset keep page styles out. */
+anchor-focus-root, anchor-focus-root * {
+  all: initial !important;
+  box-sizing: border-box !important;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important;
+}
+anchor-focus-root {
+  position: fixed !important; right: 16px !important; bottom: 16px !important;
+  z-index: 2147483647 !important; display: block !important;
+  --a-bg: #ffffff; --a-text: #17171a; --a-muted: #55554f; --a-border: #e4e3de; --a-accent: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  anchor-focus-root { --a-bg: #1c1c1e; --a-text: #f0efec; --a-muted: #c3c2b7; --a-border: #2f2f33; --a-accent: #3987e5; }
+}
+anchor-focus-card {
+  display: grid !important; gap: 4px !important; width: 300px !important; max-width: calc(100vw - 32px) !important;
+  padding: 12px 14px !important; border-radius: 12px !important;
+  background: var(--a-bg) !important; color: var(--a-text) !important;
+  border: 1px solid var(--a-border) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18) !important;
+  animation: anchor-focus-in 0.25s ease-out !important;
+  transition: opacity 0.3s, transform 0.3s !important;
+}
+anchor-focus-card[data-leaving] { opacity: 0 !important; transform: translateY(8px) !important; }
+anchor-focus-head { display: flex !important; align-items: center !important; gap: 8px !important; }
+anchor-focus-dot { display: block !important; width: 10px !important; height: 10px !important; border-radius: 50% !important; flex: none !important; }
+anchor-focus-title { display: block !important; font-size: 13px !important; font-weight: 600 !important; color: var(--a-text) !important; flex: 1 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+anchor-focus-close {
+  display: grid !important; place-items: center !important; width: 22px !important; height: 22px !important;
+  border-radius: 50% !important; cursor: pointer !important; color: var(--a-muted) !important; font-size: 16px !important; line-height: 1 !important;
+}
+anchor-focus-close:hover { background: var(--a-border) !important; color: var(--a-text) !important; }
+anchor-focus-text { display: block !important; font-size: 13px !important; line-height: 1.45 !important; color: var(--a-muted) !important; }
+
+anchor-focus-countdown {
+  display: flex !important; align-items: center !important; gap: 10px !important;
+  padding: 10px 16px 10px 12px !important; border-radius: 999px !important;
+  background: var(--a-bg) !important; color: var(--a-text) !important; border: 1px solid var(--a-border) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2) !important;
+  animation: anchor-focus-in 0.25s ease-out !important;
+}
+anchor-focus-countdown anchor-focus-text { font-size: 13px !important; }
+anchor-focus-time { display: block !important; font-size: 20px !important; font-weight: 700 !important; font-variant-numeric: tabular-nums !important; color: var(--a-text) !important; min-width: 44px !important; }
+anchor-focus-countdown[data-urgent] anchor-focus-time { color: #e34948 !important; }
+
+@keyframes anchor-focus-in { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) {
+  anchor-focus-card, anchor-focus-countdown { animation: none !important; transition: none !important; }
+}

@@ -1,16 +1,19 @@
-/* global Anchor, Challenge */
+/* global Anchor, Challenge, I18n */
 'use strict';
 
 const params = new URLSearchParams(location.search);
 const targetUrl = params.get('url') || '';
 const hintGroupId = params.get('g');
 const $ = (id) => document.getElementById(id);
+const { t } = I18n;
 
 let view = null; // { settings, state, status }
 
 async function refresh() {
   const { settings, state } = await browser.storage.local.get(['settings', 'state']);
-  const s = settings || { groups: [] };
+  const s = Anchor.normalizeSettings(settings);
+  I18n.setLanguage(s.language);
+  I18n.apply();
   const st = Anchor.normalizeState(state);
   const now = Date.now();
   const { matches, blocker } = Anchor.evaluateUrl(targetUrl, s, st, now);
@@ -19,24 +22,24 @@ async function refresh() {
   render();
 }
 
-function periodWord(p) { return p === 'hour' ? 'this hour' : 'today'; }
+function periodWord(p) { return t(p === 'hour' ? 'perHour' : 'perToday'); }
 
 function render() {
   const { status, blocked } = view;
   const now = Date.now();
-  const host = Anchor.hostOf(targetUrl) || 'This site';
-  $('title').textContent = blocked ? `${host} is blocked` : `${host} is available`;
-  document.title = `${blocked ? 'Blocked' : 'Available'} — ${host}`;
+  const host = Anchor.hostOf(targetUrl) || t('thisSiteFallback');
+  $('title').textContent = t(blocked ? 'blockedTitle' : 'availableTitle', { host });
+  document.title = `${t(blocked ? 'docBlocked' : 'docAvailable')} — ${host}`;
 
   if (!status) {
     $('group').hidden = true;
-    $('reason').textContent = 'No focus group is blocking this site right now.';
+    $('reason').textContent = t('noGroupBlocking');
   } else {
     const g = status.group;
     $('group').hidden = false;
     $('groupDot').style.background = g.color;
     $('groupName').textContent = g.name;
-    $('reason').textContent = blocked ? reasonText(status, now) : availableText(status, now);
+    $('reason').textContent = blocked ? reasonText(status, now) : availableText(status);
   }
 
   // Countdown: bypass remaining, or time until unblocked.
@@ -54,11 +57,11 @@ function render() {
   note.hidden = !canBypass;
   if (canBypass) {
     const b = status.group.bypass;
-    bypass.textContent = `Take a ${b.minutes}-minute break`;
+    bypass.textContent = t('takeBreak', { n: b.minutes });
     bypass.disabled = status.bypassLeft <= 0;
     note.textContent = status.bypassLeft > 0
-      ? `${status.bypassLeft} of ${b.maxUses} breaks left ${periodWord(b.period)}`
-      : `No breaks left ${periodWord(b.period)}`;
+      ? t('breaksLeft', { left: status.bypassLeft, max: b.maxUses, per: periodWord(b.period) })
+      : t('noBreaksLeft', { per: periodWord(b.period) });
   }
   $('disable').hidden = !blocked;
 }
@@ -67,24 +70,20 @@ function reasonText(st, now) {
   const g = st.group;
   const allowMode = g.mode === 'allow';
   if (st.reason === 'schedule') {
-    const end = st.until ? ` until ${Anchor.formatWhen(st.until, now)}` : '';
-    return allowMode
-      ? `“${g.name}” is on${end}. Only its allowed sites are open.`
-      : `“${g.name}” is on${end}. Stay with what matters.`;
+    const until = st.until ? t('untilWhen', { when: Anchor.formatWhen(st.until, now) }) : '';
+    return t(allowMode ? 'reasonScheduleAllow' : 'reasonSchedule', { name: g.name, until });
   }
   if (st.reason === 'limit') {
-    const reset = g.limit.period === 'day' ? 'midnight' : Anchor.formatClock(st.until);
-    return `You’ve used your ${Anchor.formatDuration(g.limit.minutes * 60)} ${periodWord(g.limit.period)}. It resets at ${reset}.`;
+    const reset = g.limit.period === 'day' ? t('resetMidnight') : t('atTime', { time: Anchor.formatClock(st.until) });
+    return t('reasonLimit', { d: Anchor.formatDuration(g.limit.minutes * 60), per: periodWord(g.limit.period), reset });
   }
-  return allowMode
-    ? `“${g.name}” only allows its listed sites.`
-    : `“${g.name}” keeps this site blocked.`;
+  return t(allowMode ? 'reasonAlwaysAllow' : 'reasonAlways', { name: g.name });
 }
 
-function availableText(st, now) {
-  if (st.bypassUntil) return `Break in progress. Blocking resumes at ${Anchor.formatClock(st.bypassUntil)}.`;
-  if (st.remaining !== null) return `${Anchor.formatDuration(st.remaining)} left ${periodWord(st.group.limit.period)}.`;
-  return 'You can continue.';
+function availableText(st) {
+  if (st.bypassUntil) return t('availBreak', { time: Anchor.formatClock(st.bypassUntil) });
+  if (st.remaining !== null) return t('availLeft', { d: Anchor.formatDuration(st.remaining), per: periodWord(st.group.limit.period) });
+  return t('availContinue');
 }
 
 function clock(ms) {
@@ -109,15 +108,15 @@ $('close').addEventListener('click', async () => {
 
 $('bypass').addEventListener('click', async () => {
   const g = view.status.group;
-  if (!(await Challenge.run(g, `take a ${g.bypass.minutes}-minute break from “${g.name}”`))) return;
+  if (!(await Challenge.run(g, t('actionBreak', { n: g.bypass.minutes, name: g.name })))) return;
   const res = await browser.runtime.sendMessage({ type: 'bypass', groupId: g.id });
   if (res && res.ok) goToSite();
-  else { $('bypassNote').textContent = (res && res.error) || 'Could not start a break.'; }
+  else { $('bypassNote').textContent = t((res && res.error) || 'breakFailed'); }
 });
 
 $('disable').addEventListener('click', async () => {
   const g = view.status.group;
-  if (!(await Challenge.run(g, `turn off “${g.name}”`))) return;
+  if (!(await Challenge.run(g, t('actionDisable', { name: g.name })))) return;
   const { settings } = await browser.storage.local.get('settings');
   const group = settings.groups.find((x) => x.id === g.id);
   if (group) group.enabled = false;

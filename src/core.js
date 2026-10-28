@@ -27,20 +27,36 @@
       limit: { enabled: true, minutes: 30, period: 'day' },
       bypass: { enabled: true, minutes: 5, maxUses: 3, period: 'day' },
       lock: { method: 'puzzle', pinHash: null, salt: null }, // 'none' | 'puzzle' | 'pin'
+      reminders: { card: true, countdown: true }, // on-page notes shown by the content script
     };
   }
 
+  // Translations are optional here so the core stays usable without i18n.js (e.g. in tests).
+  const tr = (key, vars) => (root.I18n ? root.I18n.t(key, vars) : key);
+  const locale = () => (root.I18n ? root.I18n.lang : undefined);
+
   function defaultSettings() {
-    const social = newGroup('Social', 0);
+    const social = newGroup(root.I18n ? tr('groupSocial') : 'Social', 0);
     social.sites = ['facebook.com', 'instagram.com', 'tiktok.com', 'x.com', 'twitter.com', 'reddit.com'];
 
-    const work = newGroup('Deep work', 1);
+    const work = newGroup(root.I18n ? tr('groupDeepWork') : 'Deep work', 1);
     work.enabled = false;
     work.sites = ['youtube.com', 'news.ycombinator.com', 'netflix.com'];
     work.schedule.enabled = true;
     work.limit = { enabled: false, minutes: 15, period: 'hour' };
 
-    return { version: 1, groups: [social, work] };
+    return { version: 1, language: 'auto', groups: [social, work] };
+  }
+
+  /** Fill in fields added in later versions so older saved settings keep working. */
+  function normalizeSettings(s) {
+    const out = s || defaultSettings();
+    if (!out.language) out.language = 'auto';
+    for (const g of out.groups || []) {
+      if (!g.reminders) g.reminders = { card: true, countdown: true };
+    }
+    out.groups = out.groups || [];
+    return out;
   }
 
   function emptyState() {
@@ -309,51 +325,63 @@
   }
 
   function formatClock(t) {
-    return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return new Date(t).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
   }
 
+  const dayName = (t) => (root.I18n ? root.I18n.days() : DAY_LABELS)[new Date(t).getDay()];
+
+  /** "5:00 PM", "tomorrow 9:00 AM", "Mon 9:00 AM" — for "until …". */
   function formatWhen(t, now = Date.now()) {
     if (!t) return '';
-    const sameDay = dayKey(t) === dayKey(now);
-    const tomorrow = dayKey(t) === dayKey(now + 86400000);
-    const clock = formatClock(t);
-    if (sameDay) return clock;
-    if (tomorrow) return `tomorrow ${clock}`;
-    return `${DAY_LABELS[new Date(t).getDay()]} ${clock}`;
+    const time = formatClock(t);
+    if (dayKey(t) === dayKey(now)) return time;
+    if (dayKey(t) === dayKey(now + 86400000)) return tr('tomorrowTime', { time });
+    return tr('dayTime', { day: dayName(t), time });
+  }
+
+  /** "at 5:00 PM", "tomorrow at 9:00 AM", "Mon at 9:00 AM" — for "it will be blocked …". */
+  function formatAt(t, now = Date.now()) {
+    if (!t) return '';
+    const time = formatClock(t);
+    if (dayKey(t) === dayKey(now)) return tr('atTime', { time });
+    if (dayKey(t) === dayKey(now + 86400000)) return tr('tomorrowAt', { time });
+    return tr('dayAt', { day: dayName(t), time });
   }
 
   /** Short human status for a group evaluation. kind: 'off' | 'blocked' | 'break' | 'open' */
   function describeStatus(st, now = Date.now()) {
     const g = st.group;
-    const per = g.limit.period === 'hour' ? 'this hour' : 'today';
-    if (!g.enabled) return { kind: 'off', text: 'Off' };
-    if (st.bypassUntil) return { kind: 'break', text: `On a break until ${formatClock(st.bypassUntil)}` };
+    if (!g.enabled) return { kind: 'off', text: tr('statusOff') };
+    if (st.bypassUntil) return { kind: 'break', text: tr('statusBreak', { time: formatClock(st.bypassUntil) }) };
     if (st.reason === 'schedule') {
-      return { kind: 'blocked', text: st.until ? `Blocking until ${formatWhen(st.until, now)}` : 'Blocking' };
+      return { kind: 'blocked', text: st.until ? tr('statusBlockingUntil', { when: formatWhen(st.until, now) }) : tr('statusBlocking') };
     }
     if (st.reason === 'limit') {
-      return { kind: 'blocked', text: `Limit reached · resets ${g.limit.period === 'day' ? 'at midnight' : formatClock(st.until)}` };
+      const reset = g.limit.period === 'day' ? tr('resetMidnight') : tr('atTime', { time: formatClock(st.until) });
+      return { kind: 'blocked', text: tr('statusLimit', { reset }) };
     }
-    if (st.reason === 'always') return { kind: 'blocked', text: 'Always blocking' };
+    if (st.reason === 'always') return { kind: 'blocked', text: tr('statusAlways') };
     const parts = [];
-    if (st.remaining !== null) parts.push(`${formatDuration(st.remaining)} left ${per}`);
+    if (st.remaining !== null) {
+      parts.push(tr(g.limit.period === 'hour' ? 'statusLeftHour' : 'statusLeftToday', { d: formatDuration(st.remaining) }));
+    }
     if (g.schedule.enabled) {
       const next = nextScheduleChange(g.schedule, now);
-      if (next) parts.push(`blocks ${formatWhen(next, now)}`);
+      if (next) parts.push(tr('statusBlocksAt', { when: formatAt(next, now) }));
     }
-    return { kind: 'open', text: parts.join(' · ') || 'Open' };
+    return { kind: 'open', text: parts.join(' · ') || tr('statusOpen') };
   }
 
   const api = {
     GROUP_COLORS, DAY_LABELS,
-    uid, newGroup, defaultSettings, emptyState, normalizeState,
+    uid, newGroup, defaultSettings, normalizeSettings, emptyState, normalizeState,
     parseSite, isTrackable, hostOf, siteMatches, groupMatches,
     dayKey, hourKey, periodStart, periodEnd, usedSeconds,
     toMinutes, scheduleActive, nextScheduleChange,
     bypassUsesLeft, evaluateGroup, evaluateUrl,
     recordUsage, pruneState,
     hashPin, makePuzzle,
-    formatDuration, formatClock, formatWhen, describeStatus,
+    formatDuration, formatClock, formatWhen, formatAt, describeStatus,
   };
 
   root.Anchor = api;

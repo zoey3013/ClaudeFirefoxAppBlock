@@ -1,8 +1,9 @@
-/* global Anchor, Challenge */
+/* global Anchor, Challenge, I18n */
 'use strict';
 
 const $ = (id) => document.getElementById(id);
 const { el } = Challenge;
+const { t } = I18n;
 const BLOCK_PAGE = browser.runtime.getURL('src/blocked/blocked.html');
 
 let settings, state, currentUrl;
@@ -16,7 +17,9 @@ async function getCurrentUrl() {
 
 async function load() {
   const data = await browser.storage.local.get(['settings', 'state']);
-  settings = data.settings || { groups: [] };
+  settings = Anchor.normalizeSettings(data.settings);
+  I18n.setLanguage(settings.language);
+  I18n.apply();
   state = Anchor.normalizeState(data.state);
 }
 
@@ -32,7 +35,7 @@ function render() {
 
 function renderCurrent(now) {
   const trackable = Anchor.isTrackable(currentUrl);
-  $('host').textContent = trackable ? Anchor.hostOf(currentUrl) : 'Not a website';
+  $('host').textContent = trackable ? Anchor.hostOf(currentUrl) : t('notWebsite');
   const box = $('currentStatus');
   box.replaceChildren();
   $('addForm').hidden = true;
@@ -46,12 +49,12 @@ function renderCurrent(now) {
       el('span', { class: 'name' }, m.group.name),
       el('span', { class: 'muted' }, s.text)));
   }
-  if (!matches.length) box.append(el('p', { class: 'muted' }, 'Not in any focus group.'));
+  if (!matches.length) box.append(el('p', { class: 'muted' }, t('notInGroup')));
 
   // Quick add: only block-list groups that don't already cover this site (adding is always allowed).
   const candidates = settings.groups.filter((g) => g.mode === 'block' && !Anchor.groupMatches(g, currentUrl));
   if (candidates.length) {
-    $('addGroup').replaceChildren(...candidates.map((g) => el('option', { value: g.id }, `Add to ${g.name}`)));
+    $('addGroup').replaceChildren(...candidates.map((g) => el('option', { value: g.id }, t('addTo', { name: g.name }))));
     $('addForm').hidden = false;
   }
 }
@@ -63,7 +66,7 @@ function renderGroups(now) {
   for (const g of settings.groups) {
     const st = Anchor.evaluateGroup(g, state, now);
     const s = Anchor.describeStatus(st, now);
-    const input = el('input', { type: 'checkbox', 'aria-label': `Enable ${g.name}` });
+    const input = el('input', { type: 'checkbox', 'aria-label': t('enableGroup', { name: g.name }) });
     input.checked = g.enabled;
     input.addEventListener('change', () => toggleGroup(g, input));
     list.append(el('li', { class: g.enabled ? '' : 'off' },
@@ -78,7 +81,7 @@ function renderGroups(now) {
 async function toggleGroup(group, input) {
   if (!input.checked) {
     input.checked = true;
-    if (!(await Challenge.run(group, `turn off “${group.name}”`))) return;
+    if (!(await Challenge.run(group, t('actionDisable', { name: group.name })))) return;
     input.checked = false;
   }
   group.enabled = input.checked;

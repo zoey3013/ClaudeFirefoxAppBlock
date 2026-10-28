@@ -1,9 +1,10 @@
-/* global Anchor, Challenge */
+/* global Anchor, Challenge, I18n */
 'use strict';
 
 /** Stats view: totals, per-group usage, a 7-day chart and top sites. */
 const Stats = (() => {
   const { el } = Challenge;
+  const { t } = I18n;
   let range = 'today'; // 'today' | 'week'
 
   function daysBack(n, now) {
@@ -39,8 +40,8 @@ const Stats = (() => {
     const bars = days.map((t, i) => {
       const v = values[i];
       const d = new Date(t);
-      const label = i === days.length - 1 ? 'Today' : Anchor.DAY_LABELS[d.getDay()];
-      const full = d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+      const label = i === days.length - 1 ? t('today') : I18n.days()[d.getDay()];
+      const full = d.toLocaleDateString(I18n.lang, { weekday: 'long', month: 'short', day: 'numeric' });
       const col = el('div', { class: 'bar-col', tabindex: '0', 'aria-label': `${full}: ${Anchor.formatDuration(v)}` },
         el('div', { class: 'bar-track' },
           el('div', { class: 'bar', style: `height:${v ? Math.max(2, (v / max) * 100) : 0}%` })),
@@ -75,17 +76,17 @@ const Stats = (() => {
     for (const bp of Object.values(state.bypass)) breaks += (bp.uses || []).filter((t) => t >= start).length;
 
     const toggle = el('div', { class: 'segmented' });
-    for (const [val, text] of [['today', 'Today'], ['week', 'Last 7 days']]) {
+    for (const [val, text] of [['today', t('today')], ['week', t('last7')]]) {
       const b = el('button', { type: 'button', 'aria-pressed': String(range === val) }, text);
       b.addEventListener('click', () => { range = val; render(root, settings, state); });
       toggle.append(b);
     }
 
-    const head = el('div', { class: 'stats-head' }, el('h1', {}, 'Stats'), toggle);
+    const head = el('div', { class: 'stats-head' }, el('h1', {}, t('stats')), toggle);
     const tiles = el('div', { class: 'tiles' },
-      tile('Time on the web', Anchor.formatDuration(webTime), range === 'week' ? `${Anchor.formatDuration(webTime / 7)} per day on average` : 'Active tab, browser focused'),
-      tile('Blocked visits', String(blocks), 'Times a blocked site was opened'),
-      tile('Breaks taken', String(breaks), 'Temporary unblocks'));
+      tile(t('tileWeb'), Anchor.formatDuration(webTime), range === 'week' ? t('tileWebAvg', { d: Anchor.formatDuration(webTime / 7) }) : t('tileWebSub')),
+      tile(t('tileBlocks'), String(blocks), t('tileBlocksSub')),
+      tile(t('tileBreaks'), String(breaks), t('tileBreaksSub')));
 
     // Groups
     const groupRows = settings.groups.map((g) => {
@@ -100,7 +101,7 @@ const Stats = (() => {
         row.append(
           el('div', { class: 'meter' }, el('span', { style: `width:${Math.min(100, (used / cap) * 100)}%;background:${g.color}` })),
           el('p', { class: 'faint', style: 'font-size:12px' },
-            `${Anchor.formatDuration(used)} of ${Anchor.formatDuration(cap)} allowance used ${g.limit.period === 'day' ? 'today' : 'this hour'}`));
+            t('allowanceUsed', { a: Anchor.formatDuration(used), b: Anchor.formatDuration(cap), per: t(g.limit.period === 'day' ? 'perToday' : 'perHour') })));
       }
       return row;
     });
@@ -121,11 +122,11 @@ const Stats = (() => {
 
     root.replaceChildren(
       head, tiles,
-      el('section', { class: 'card' }, el('h2', {}, 'Daily time on the web'), barChart(week, weekValues)),
-      el('section', { class: 'card' }, el('h2', {}, 'Focus groups'),
-        ...(groupRows.length ? groupRows : [el('p', { class: 'muted' }, 'No groups yet.')])),
-      el('section', { class: 'card' }, el('h2', {}, range === 'today' ? 'Top sites today' : 'Top sites this week'),
-        ...(siteRows.length ? siteRows : [el('p', { class: 'muted' }, 'Nothing tracked yet. Browse a bit and check back.')])),
+      el('section', { class: 'card' }, el('h2', {}, t('chartTitle')), barChart(week, weekValues)),
+      el('section', { class: 'card' }, el('h2', {}, t('focusGroups')),
+        ...(groupRows.length ? groupRows : [el('p', { class: 'muted' }, t('noGroups'))])),
+      el('section', { class: 'card' }, el('h2', {}, t(range === 'today' ? 'topToday' : 'topWeek')),
+        ...(siteRows.length ? siteRows : [el('p', { class: 'muted' }, t('nothingTracked'))])),
     );
   }
 

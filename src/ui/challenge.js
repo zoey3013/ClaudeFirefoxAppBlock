@@ -1,11 +1,11 @@
-/* global Anchor */
+/* global Anchor, I18n */
 'use strict';
 
 /**
  * Unlock challenge modal. Resolves true when the user passes the group's
  * lock (PIN or math puzzle), false when they cancel. Groups with no lock pass immediately.
  *
- *   const ok = await Challenge.run(group, 'disable “Social”');
+ *   const ok = await Challenge.run(group, I18n.t('actionDisable', { name }));
  */
 const Challenge = (() => {
   function el(tag, attrs = {}, ...children) {
@@ -22,8 +22,8 @@ const Challenge = (() => {
   function shell(title, subtitle) {
     const error = el('p', { class: 'error', role: 'alert' });
     const body = el('div', { class: 'problems' });
-    const cancel = el('button', { class: 'btn ghost', type: 'button' }, 'Cancel');
-    const submit = el('button', { class: 'btn primary', type: 'submit' }, 'Unlock');
+    const cancel = el('button', { class: 'btn ghost', type: 'button' }, I18n.t('cancel'));
+    const submit = el('button', { class: 'btn primary', type: 'submit' }, I18n.t('unlock'));
     const card = el('form', { class: 'challenge', autocomplete: 'off' },
       el('div', {}, el('h3', {}, title), el('p', { class: 'muted' }, subtitle)),
       body, error,
@@ -45,7 +45,7 @@ const Challenge = (() => {
     let inputs = [];
     const render = () => {
       problems = Anchor.makePuzzle();
-      inputs = problems.map(() => el('input', { class: 'input', inputmode: 'numeric', 'aria-label': 'Answer' }));
+      inputs = problems.map(() => el('input', { class: 'input', inputmode: 'numeric', 'aria-label': I18n.t('answer') }));
       ui.body.replaceChildren(...problems.map((p, i) =>
         el('div', { class: 'problem' }, el('span', {}, `${p.text} =`), inputs[i])));
       inputs[0].focus();
@@ -54,7 +54,7 @@ const Challenge = (() => {
     return () => {
       const right = problems.every((p, i) => Number(inputs[i].value.trim()) === p.answer && inputs[i].value.trim() !== '');
       if (!right) {
-        fail(ui, 'Not quite. Here are three new ones.');
+        fail(ui, I18n.t('puzzleWrong'));
         render();
       }
       return right;
@@ -76,7 +76,7 @@ const Challenge = (() => {
       // Each wrong guess adds a short cool-down, so guessing is a deliberate act too.
       const wait = Math.min(30, wrong * 3);
       ui.submit.disabled = true;
-      fail(ui, `Wrong PIN. Try again in ${wait}s.`);
+      fail(ui, I18n.t('pinWrong', { s: wait }));
       setTimeout(() => { ui.submit.disabled = false; ui.error.textContent = ''; input.focus(); }, wait * 1000);
       return false;
     };
@@ -89,8 +89,8 @@ const Challenge = (() => {
     return new Promise((resolve) => {
       const isPin = method === 'pin';
       const ui = shell(
-        isPin ? 'Enter your PIN' : 'Solve to continue',
-        isPin ? `To ${action}.` : `Three quick problems to ${action}. Take a breath — is this a conscious choice?`,
+        I18n.t(isPin ? 'pinTitle' : 'puzzleTitle'),
+        I18n.t(isPin ? 'pinSub' : 'puzzleSub', { action }),
       );
       const check = isPin ? runPin(ui, group) : runPuzzle(ui);
       const done = (ok) => { ui.backdrop.remove(); document.removeEventListener('keydown', onKey); resolve(ok); };

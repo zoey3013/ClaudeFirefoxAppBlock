@@ -134,3 +134,10 @@ code { font-size: 12px; background: var(--surface); padding: 1px 4px; border-rad
 .site-time { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) { .tiles { grid-template-columns: 1fr; } }
 #stats .card h2 { font-size: 15px; }
+
+/* General */
+#general { display: grid; gap: 16px; }
+#general h1 { font-size: 24px; }
+.check-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.check-row + .check-row { padding-top: 14px; border-top: 1px solid var(--border); }
+.check-row strong { display: block; font-weight: 500; }

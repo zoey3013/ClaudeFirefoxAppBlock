@@ -1,13 +1,15 @@
-/* global Anchor, Challenge, Stats */
+/* global Anchor, Challenge, Stats, I18n */
 'use strict';
 
 const $ = (id) => document.getElementById(id);
 const { el } = Challenge;
+const { t } = I18n;
 
 let settings = { groups: [] };
 let state = Anchor.emptyState();
-let selected = null; // group id, or 'stats'
+let selected = null; // group id, 'stats' or 'general'
 const unlocked = new Set(); // groups unlocked for editing during this page visit
+const PAGES = ['stats', 'general'];
 
 // ---------- Persistence ----------
 
@@ -17,7 +19,7 @@ function save(immediate = false) {
   const run = async () => {
     saveTimer = null;
     await browser.storage.local.set({ settings });
-    toast('Saved');
+    toast(t('saved'));
   };
   if (immediate) return run();
   saveTimer = setTimeout(run, 350);
@@ -25,17 +27,23 @@ function save(immediate = false) {
 
 let toastTimer = null;
 function toast(text) {
-  const t = $('toast');
-  t.textContent = text;
-  t.classList.add('show');
+  const n = $('toast');
+  n.textContent = text;
+  n.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 1200);
+  toastTimer = setTimeout(() => n.classList.remove('show'), 1200);
 }
 
 async function load() {
   const data = await browser.storage.local.get(['settings', 'state']);
-  settings = data.settings || Anchor.defaultSettings();
+  settings = Anchor.normalizeSettings(data.settings);
   state = Anchor.normalizeState(data.state);
+}
+
+function applyLanguage() {
+  I18n.setLanguage(settings.language);
+  I18n.apply();
+  document.title = t('docSettings');
 }
 
 // ---------- Helpers ----------
@@ -72,8 +80,8 @@ function numberInput(value, min, max, onChange, label) {
 }
 
 function periodSelect(value, onChange) {
-  const s = el('select', { class: 'input', 'aria-label': 'Period' },
-    el('option', { value: 'day' }, 'per day'), el('option', { value: 'hour' }, 'per hour'));
+  const s = el('select', { class: 'input', 'aria-label': t('period') },
+    el('option', { value: 'day' }, t('perDay')), el('option', { value: 'hour' }, t('perHourOpt')));
   s.value = value;
   s.addEventListener('change', () => onChange(s.value));
   return s;
@@ -88,15 +96,13 @@ function card(title, desc, control, ...body) {
 }
 
 function summarize(g) {
+  const where = g.mode === 'allow' ? t('whereAllow') : t('nSites', { n: g.sites.length });
+  if (!g.schedule.enabled && !g.limit.enabled) return t('sumAlways', { where });
   const parts = [];
-  const where = g.mode === 'allow'
-    ? 'everything except the allowed sites'
-    : `${g.sites.length} site${g.sites.length === 1 ? '' : 's'}`;
-  if (!g.schedule.enabled && !g.limit.enabled) return `Always blocks ${where}.`;
-  if (g.schedule.enabled) parts.push(`Blocks ${where} during scheduled hours`);
+  if (g.schedule.enabled) parts.push(t('sumSchedule', { where }));
   if (g.limit.enabled) {
-    const per = g.limit.period === 'day' ? 'day' : 'hour';
-    parts.push(`${g.schedule.enabled ? 'outside them, allows' : `Allows ${where} for`} ${Anchor.formatDuration(g.limit.minutes * 60)} per ${per}, shared`);
+    const vars = { where, d: Anchor.formatDuration(g.limit.minutes * 60), per: t(g.limit.period === 'day' ? 'unitDay' : 'unitHour') };
+    parts.push(t(g.schedule.enabled ? 'sumLimitAfter' : 'sumLimit', vars));
   }
   return parts.join('; ') + '.';
 }
@@ -111,27 +117,51 @@ function renderNav() {
     const b = el('button', { class: 'nav-item', 'aria-current': String(selected === g.id) },
       el('span', { class: 'dot', style: `background:${g.color}` }),
       el('span', { class: 'meta' },
-        el('span', { class: 'name' }, g.name || 'Untitled'),
+        el('span', { class: 'name' }, g.name || t('untitled')),
         el('span', { class: `sub ${s.kind}` }, (isLocked(g) && !unlocked.has(g.id) ? '🔒 ' : '') + s.text)));
     b.addEventListener('click', () => select(g.id));
     return b;
   }));
   $('navStats').setAttribute('aria-current', String(selected === 'stats'));
+  $('navGeneral').setAttribute('aria-current', String(selected === 'general'));
 }
 
 function select(id) {
   selected = id;
-  history.replaceState(null, '', id === 'stats' ? '#stats' : `#${id}`);
+  history.replaceState(null, '', `#${id}`);
   render();
 }
 
 function render() {
   renderNav();
-  const showStats = selected === 'stats';
-  $('stats').hidden = !showStats;
-  $('editor').hidden = showStats;
-  if (showStats) Stats.render($('stats'), settings, state);
+  $('stats').hidden = selected !== 'stats';
+  $('general').hidden = selected !== 'general';
+  $('editor').hidden = PAGES.includes(selected);
+  if (selected === 'stats') Stats.render($('stats'), settings, state);
+  else if (selected === 'general') renderGeneral();
   else renderEditor();
+}
+
+// ---------- General ----------
+
+function renderGeneral() {
+  const lang = el('select', { class: 'input', 'aria-label': t('language') },
+    el('option', { value: 'auto' }, t('langAuto')),
+    el('option', { value: 'en' }, 'English'),
+    el('option', { value: 'es' }, 'Español'));
+  lang.value = settings.language;
+  lang.addEventListener('change', async () => {
+    settings.language = lang.value;
+    applyLanguage();
+    await save(true);
+    render();
+  });
+  $('general').replaceChildren(
+    el('h1', {}, t('general')),
+    card(t('language'), t('languageDesc'), lang),
+    card(t('about'), t('version', { v: browser.runtime.getManifest().version }), null,
+      el('p', { class: 'hint' }, t('updatesNote'))),
+  );
 }
 
 // ---------- Editor ----------
@@ -141,8 +171,8 @@ function renderEditor() {
   const g = groupById(selected);
   if (!g) {
     root.replaceChildren(el('div', { class: 'card' },
-      el('h2', {}, 'No group selected'),
-      el('p', { class: 'muted' }, 'Create a focus group to start blocking distractions.')));
+      el('h2', {}, t('noGroupSelected')),
+      el('p', { class: 'muted' }, t('createToStart'))));
     return;
   }
   const editable = canEdit(g);
@@ -152,45 +182,45 @@ function renderEditor() {
   const summary = el('p', { class: 'summary' }, summarize(g));
   const updateSummary = () => { summary.textContent = summarize(g); };
 
-  const nameInput = el('input', { class: 'name-input', value: g.name, 'aria-label': 'Group name', maxlength: '40' });
+  const nameInput = el('input', { class: 'name-input', value: g.name, 'aria-label': t('groupName'), maxlength: '40' });
   nameInput.disabled = !editable;
-  nameInput.addEventListener('input', () => { g.name = nameInput.value.trim() || 'Untitled'; changed(); });
+  nameInput.addEventListener('input', () => { g.name = nameInput.value.trim() || t('untitled'); changed(); });
 
   const enabled = switchEl(g.enabled, async (on, input) => {
     if (!on && !canEdit(g)) {
       input.checked = true;
-      if (!(await Challenge.run(g, `turn off “${g.name}”`))) return;
+      if (!(await Challenge.run(g, t('actionDisable', { name: g.name })))) return;
       input.checked = false;
     }
     g.enabled = on;
     save(true);
     renderNav();
-    input.closest('.toggle-label').firstChild.textContent = on ? 'On' : 'Off';
-  }, 'Group enabled');
+    input.closest('.toggle-label').firstChild.textContent = t(on ? 'on' : 'off');
+  }, t('groupEnabled'));
 
   const header = el('section', { class: 'card' },
     el('div', { class: 'title-row' },
       el('span', { class: 'dot', style: `background:${g.color};width:14px;height:14px` }),
       nameInput,
-      el('label', { class: 'toggle-label' }, g.enabled ? 'On' : 'Off', enabled)),
+      el('label', { class: 'toggle-label' }, t(g.enabled ? 'on' : 'off'), enabled)),
     summary);
 
   const parts = [header];
 
   if (!editable) {
-    const unlock = el('button', { class: 'btn primary', type: 'button' }, 'Unlock to edit');
+    const unlock = el('button', { class: 'btn primary', type: 'button' }, t('unlockToEdit'));
     unlock.addEventListener('click', async () => {
-      if (await Challenge.run(g, `change “${g.name}”`)) { unlocked.add(g.id); render(); }
+      if (await Challenge.run(g, t('actionEdit', { name: g.name }))) { unlocked.add(g.id); render(); }
     });
     parts.push(el('div', { class: 'lockbar' },
-      el('div', {}, el('strong', {}, 'This group is protected'),
-        el('span', { class: 'muted' }, g.lock.method === 'pin' ? 'Enter the PIN to make changes.' : 'Solve three quick problems to make changes.')),
+      el('div', {}, el('strong', {}, t('protectedTitle')),
+        el('span', { class: 'muted' }, t(g.lock.method === 'pin' ? 'protectedPin' : 'protectedPuzzle'))),
       unlock));
   } else if (isLocked(g)) {
-    const relock = el('button', { class: 'btn small', type: 'button' }, 'Lock again');
+    const relock = el('button', { class: 'btn small', type: 'button' }, t('lockAgain'));
     relock.addEventListener('click', () => { unlocked.delete(g.id); render(); });
     parts.push(el('div', { class: 'lockbar' },
-      el('div', {}, el('strong', {}, 'Unlocked for editing'), el('span', { class: 'muted' }, 'Changes save automatically.')),
+      el('div', {}, el('strong', {}, t('unlockedTitle')), el('span', { class: 'muted' }, t('autosave'))),
       relock));
   }
 
@@ -202,6 +232,7 @@ function renderEditor() {
     scheduleCard(g, changed),
     limitCard(g, changed),
     bypassCard(g, changed),
+    remindersCard(g, changed),
     lockCard(g, changed),
     dangerCard(g),
   );
@@ -211,29 +242,30 @@ function renderEditor() {
 
 function colorCard(g, changed) {
   const swatches = el('div', { class: 'swatches' }, ...Anchor.GROUP_COLORS.map((c) => {
-    const b = el('button', { type: 'button', class: 'swatch', style: `background:${c}`, 'aria-pressed': String(g.color === c), 'aria-label': `Color ${c}` });
+    const b = el('button', { type: 'button', class: 'swatch', style: `background:${c}`, 'aria-pressed': String(g.color === c), 'aria-label': t('colorLabel', { c }) });
     b.addEventListener('click', () => { g.color = c; changed(true); });
     return b;
   }));
-  return card('Color', 'Helps you recognise the group in the toolbar and stats.', null, swatches);
+  return card(t('color'), t('colorDesc'), null, swatches);
 }
 
 let siteError = ''; // survives the re-render after adding sites
+let siteErrorInput = '';
 
 function sitesCard(g, changed) {
-  const mode = segmented([['block', 'Block these sites'], ['allow', 'Allow only these sites']], g.mode,
+  const mode = segmented([['block', t('modeBlock')], ['allow', t('modeAllow')]], g.mode,
     (m) => { g.mode = m; changed(true); });
 
   const chips = el('div', { class: 'chips' }, ...g.sites.map((s) => {
-    const x = el('button', { type: 'button', 'aria-label': `Remove ${s}` }, '×');
+    const x = el('button', { type: 'button', 'aria-label': t('removeSite', { s }) }, '×');
     x.addEventListener('click', () => { g.sites = g.sites.filter((v) => v !== s); changed(true); });
     return el('span', { class: 'chip' }, s, x);
   }));
-  if (!g.sites.length) chips.append(el('span', { class: 'faint' }, 'No sites yet.'));
+  if (!g.sites.length) chips.append(el('span', { class: 'faint' }, t('noSites')));
 
-  const input = el('input', { class: 'input', placeholder: 'reddit.com, youtube.com/shorts …', 'aria-label': 'Add website' });
+  const input = el('input', { class: 'input', placeholder: 'reddit.com, youtube.com/shorts …', 'aria-label': t('addWebsite') });
   const error = el('p', { class: 'hint', style: 'color:var(--danger)' }, siteError);
-  if (siteError) { input.value = siteError.replace(/^.*?: /, ''); siteError = ''; }
+  if (siteError) { input.value = siteErrorInput; siteError = ''; siteErrorInput = ''; }
   const add = () => {
     const raw = input.value.split(/[\s,]+/).filter(Boolean);
     const bad = [];
@@ -242,28 +274,27 @@ function sitesCard(g, changed) {
       if (!s) bad.push(r);
       else if (!g.sites.includes(s)) g.sites.push(s);
     }
-    if (bad.length) siteError = `Not a valid website: ${bad.join(', ')}`;
+    if (bad.length) { siteError = t('invalidSite', { list: bad.join(', ') }); siteErrorInput = bad.join(', '); }
     if (raw.length && bad.length < raw.length) changed(true);
-    else if (bad.length) { error.textContent = siteError; siteError = ''; }
+    else if (bad.length) { error.textContent = siteError; siteError = ''; siteErrorInput = ''; }
   };
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
-  const addBtn = el('button', { class: 'btn', type: 'button' }, 'Add');
+  const addBtn = el('button', { class: 'btn', type: 'button' }, t('add'));
   addBtn.addEventListener('click', add);
 
-  return card('Websites',
-    g.mode === 'allow'
-      ? 'Whitelist mode: every website is blocked except these.'
-      : 'These websites are blocked by this group.',
+  return card(t('websites'), t(g.mode === 'allow' ? 'sitesDescAllow' : 'sitesDescBlock'),
     null, mode, chips, el('div', { class: 'add-row' }, input, addBtn), error,
-    el('p', { class: 'hint' }, 'A domain like reddit.com covers all its subdomains. Add a path like youtube.com/shorts to target just that section. Paste several at once, separated by commas or spaces.'));
+    el('p', { class: 'hint' }, t('sitesHint')));
 }
 
 function scheduleCard(g, changed) {
   const sch = g.schedule;
+  const dayNames = I18n.days();
+  const initials = I18n.dayInitials();
   const rules = el('div', { style: 'display:grid;gap:8px' }, ...sch.rules.map((r, i) => {
     const days = el('div', { class: 'days' }, ...[1, 2, 3, 4, 5, 6, 0].map((d) => {
-      const b = el('button', { type: 'button', class: 'day', 'aria-pressed': String(r.days.includes(d)), 'aria-label': Anchor.DAY_LABELS[d] },
-        Anchor.DAY_LABELS[d][0]);
+      const b = el('button', { type: 'button', class: 'day', 'aria-pressed': String(r.days.includes(d)), 'aria-label': dayNames[d], title: dayNames[d] },
+        initials[d]);
       b.addEventListener('click', () => {
         r.days = r.days.includes(d) ? r.days.filter((x) => x !== d) : [...r.days, d];
         b.setAttribute('aria-pressed', String(r.days.includes(d)));
@@ -271,24 +302,23 @@ function scheduleCard(g, changed) {
       });
       return b;
     }));
-    const start = el('input', { class: 'input', type: 'time', value: r.start, 'aria-label': 'Start' });
-    const end = el('input', { class: 'input', type: 'time', value: r.end, 'aria-label': 'End' });
+    const start = el('input', { class: 'input', type: 'time', value: r.start, 'aria-label': t('start') });
+    const end = el('input', { class: 'input', type: 'time', value: r.end, 'aria-label': t('end') });
     start.addEventListener('change', () => { if (start.value) { r.start = start.value; changed(); } });
     end.addEventListener('change', () => { if (end.value) { r.end = end.value; changed(); } });
-    const remove = el('button', { type: 'button', class: 'btn ghost small remove', 'aria-label': 'Remove time range' }, 'Remove');
+    const remove = el('button', { type: 'button', class: 'btn ghost small remove', 'aria-label': t('removeRange') }, t('remove'));
     remove.hidden = sch.rules.length < 2;
     remove.addEventListener('click', () => { sch.rules.splice(i, 1); changed(true); });
-    return el('div', { class: 'rule' }, days, el('span', { class: 'inline' }, start, el('span', { class: 'faint' }, 'to'), end), remove);
+    return el('div', { class: 'rule' }, days, el('span', { class: 'inline' }, start, el('span', { class: 'faint' }, t('to')), end), remove);
   }));
-  const addRule = el('button', { type: 'button', class: 'btn small' }, '+ Add time range');
+  const addRule = el('button', { type: 'button', class: 'btn small' }, t('addRange'));
   addRule.addEventListener('click', () => { sch.rules.push({ days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' }); changed(true); });
 
   const body = sch.enabled
-    ? [rules, el('div', {}, addRule),
-      el('p', { class: 'hint' }, 'Ranges can run overnight (22:00 to 06:00). Same start and end blocks the whole day.')]
+    ? [rules, el('div', {}, addRule), el('p', { class: 'hint' }, t('scheduleHint'))]
     : [];
-  return card('Schedule', 'Fully block these sites during set hours.',
-    switchEl(sch.enabled, (on) => { sch.enabled = on; changed(true); }, 'Use schedule'), ...body);
+  return card(t('schedule'), t('scheduleDesc'),
+    switchEl(sch.enabled, (on) => { sch.enabled = on; changed(true); }, t('useSchedule')), ...body);
 }
 
 function limitCard(g, changed) {
@@ -296,59 +326,65 @@ function limitCard(g, changed) {
   const body = [];
   if (lim.enabled) {
     body.push(el('div', { class: 'inline' },
-      numberInput(lim.minutes, 1, 1440, (n) => { lim.minutes = n; changed(); }, 'Minutes'),
-      el('span', {}, 'minutes'),
+      numberInput(lim.minutes, 1, 1440, (n) => { lim.minutes = n; changed(); }, t('minutes')),
+      el('span', {}, t('minutes')),
       periodSelect(lim.period, (p) => { lim.period = p; changed(true); })));
     const used = Anchor.usedSeconds(state, g.id, lim.period, Date.now());
     const pct = Math.min(100, (used / (lim.minutes * 60)) * 100);
     body.push(el('div', { style: 'display:grid;gap:6px' },
       el('div', { class: 'inline', style: 'justify-content:space-between' },
-        el('span', { class: 'muted' }, `Used ${lim.period === 'day' ? 'today' : 'this hour'}`),
-        el('span', {}, `${Anchor.formatDuration(used)} of ${Anchor.formatDuration(lim.minutes * 60)}`)),
+        el('span', { class: 'muted' }, t(lim.period === 'day' ? 'usedToday' : 'usedHour')),
+        el('span', {}, t('usedOf', { a: Anchor.formatDuration(used), b: Anchor.formatDuration(lim.minutes * 60) }))),
       el('div', { class: 'meter' }, el('span', { style: `width:${pct}%;background:${g.color}` }))));
-    body.push(el('p', { class: 'hint' }, 'Time is pooled: every site in this group draws from the same allowance. Once it runs out, all of them are blocked until it resets.'));
+    body.push(el('p', { class: 'hint' }, t('allowanceHint')));
   }
-  return card('Time allowance', 'Let yourself use these sites for a limited time.',
-    switchEl(lim.enabled, (on) => { lim.enabled = on; changed(true); }, 'Use time allowance'), ...body);
+  return card(t('allowance'), t('allowanceDesc'),
+    switchEl(lim.enabled, (on) => { lim.enabled = on; changed(true); }, t('useAllowance')), ...body);
 }
 
 function bypassCard(g, changed) {
   const bp = g.bypass;
   const body = bp.enabled ? [
     el('div', { class: 'inline' },
-      numberInput(bp.minutes, 1, 120, (n) => { bp.minutes = n; changed(); }, 'Break length'),
-      el('span', {}, 'minute break, up to'),
-      numberInput(bp.maxUses, 1, 50, (n) => { bp.maxUses = n; changed(); }, 'Times'),
-      el('span', {}, 'times'),
+      numberInput(bp.minutes, 1, 120, (n) => { bp.minutes = n; changed(); }, t('breakLength')),
+      el('span', {}, t('minuteBreakUpTo')),
+      numberInput(bp.maxUses, 1, 50, (n) => { bp.maxUses = n; changed(); }, t('timesLabel')),
+      el('span', {}, t('times')),
       periodSelect(bp.period, (p) => { bp.period = p; changed(); })),
-    el('p', { class: 'hint' }, 'Breaks are offered on the block page and pause blocking for the whole group. They require the unlock challenge below.'),
+    el('p', { class: 'hint' }, t('breaksHint')),
   ] : [];
-  return card('Temporary breaks', 'Pause blocking for a few minutes when you really need to.',
-    switchEl(bp.enabled, (on) => { bp.enabled = on; changed(true); }, 'Allow breaks'), ...body);
+  return card(t('breaks'), t('breaksDesc'),
+    switchEl(bp.enabled, (on) => { bp.enabled = on; changed(true); }, t('allowBreaks')), ...body);
+}
+
+function remindersCard(g, changed) {
+  const r = g.reminders;
+  const row = (key, label, hint) => el('div', { class: 'check-row' },
+    el('div', {}, el('strong', {}, t(label)), el('span', { class: 'hint' }, t(hint))),
+    switchEl(r[key], (on) => { r[key] = on; changed(); }, t(label)));
+  return card(t('reminders'), t('remindersDesc'), null,
+    row('card', 'reminderCard', 'reminderCardHint'),
+    row('countdown', 'reminderCountdown', 'reminderCountdownHint'));
 }
 
 function lockCard(g, changed) {
   const lock = g.lock;
-  const control = segmented([['none', 'None'], ['puzzle', 'Math puzzle'], ['pin', 'PIN code']], lock.method, (m) => {
+  const control = segmented([['none', t('lockNone')], ['puzzle', t('lockPuzzle')], ['pin', t('lockPin')]], lock.method, (m) => {
     lock.method = m;
     unlocked.add(g.id); // you're already in, keep editing
     changed(true);
   });
-  const desc = {
-    none: 'Anyone can take breaks, change or turn off this group instantly.',
-    puzzle: 'Solve three easy math problems (+ − × ÷) to take a break, edit, or turn off this group.',
-    pin: 'Enter a PIN to take a break, edit, or turn off this group. Ask someone else to set it for extra commitment.',
-  }[lock.method];
+  const desc = t({ none: 'lockNoneDesc', puzzle: 'lockPuzzleDesc', pin: 'lockPinDesc' }[lock.method]);
   const body = [el('p', { class: 'muted' }, desc)];
 
   if (lock.method === 'pin') {
-    const a = el('input', { class: 'input', type: 'password', inputmode: 'numeric', maxlength: '8', placeholder: 'New PIN', 'aria-label': 'New PIN' });
-    const b = el('input', { class: 'input', type: 'password', inputmode: 'numeric', maxlength: '8', placeholder: 'Repeat', 'aria-label': 'Repeat PIN' });
-    const set = el('button', { class: 'btn primary', type: 'button' }, lock.pinHash ? 'Change PIN' : 'Set PIN');
-    const msg = el('span', { class: lock.pinHash ? 'ok-text' : 'warn-text' }, lock.pinHash ? 'PIN is set' : 'No PIN set yet, protection is off');
+    const a = el('input', { class: 'input', type: 'password', inputmode: 'numeric', maxlength: '8', placeholder: t('newPin'), 'aria-label': t('newPin') });
+    const b = el('input', { class: 'input', type: 'password', inputmode: 'numeric', maxlength: '8', placeholder: t('repeatPin'), 'aria-label': t('repeatPin') });
+    const set = el('button', { class: 'btn primary', type: 'button' }, t(lock.pinHash ? 'changePin' : 'setPin'));
+    const msg = el('span', { class: lock.pinHash ? 'ok-text' : 'warn-text' }, t(lock.pinHash ? 'pinIsSet' : 'noPinYet'));
     set.addEventListener('click', async () => {
-      if (!/^\d{4,8}$/.test(a.value)) { msg.className = 'warn-text'; msg.textContent = 'Use 4 to 8 digits.'; return; }
-      if (a.value !== b.value) { msg.className = 'warn-text'; msg.textContent = 'PINs don’t match.'; return; }
+      if (!/^\d{4,8}$/.test(a.value)) { msg.className = 'warn-text'; msg.textContent = t('pinDigits'); return; }
+      if (a.value !== b.value) { msg.className = 'warn-text'; msg.textContent = t('pinMismatch'); return; }
       lock.salt = Anchor.uid();
       lock.pinHash = await Anchor.hashPin(a.value, lock.salt);
       unlocked.add(g.id);
@@ -356,13 +392,13 @@ function lockCard(g, changed) {
     });
     body.push(el('div', { class: 'pin-row' }, a, b, set, msg));
   }
-  return card('Unlock protection', 'Make unlocking a conscious choice.', null, control, ...body);
+  return card(t('lockTitle'), t('lockDesc'), null, control, ...body);
 }
 
 function dangerCard(g) {
-  const del = el('button', { class: 'btn danger', type: 'button' }, 'Delete group');
+  const del = el('button', { class: 'btn danger', type: 'button' }, t('deleteGroup'));
   del.addEventListener('click', async () => {
-    if (!confirm(`Delete “${g.name}”? Its usage history will be removed.`)) return;
+    if (!confirm(t('confirmDelete', { name: g.name }))) return;
     settings.groups = settings.groups.filter((x) => x.id !== g.id);
     await save(true);
     select(settings.groups[0] ? settings.groups[0].id : 'stats');
@@ -373,7 +409,7 @@ function dangerCard(g) {
 // ---------- Boot ----------
 
 $('newGroup').addEventListener('click', () => {
-  const g = Anchor.newGroup('New group', settings.groups.length);
+  const g = Anchor.newGroup(t('newGroupName'), settings.groups.length);
   settings.groups.push(g);
   unlocked.add(g.id);
   save(true);
@@ -382,6 +418,7 @@ $('newGroup').addEventListener('click', () => {
   if (name) { name.focus(); name.select(); }
 });
 $('navStats').addEventListener('click', () => select('stats'));
+$('navGeneral').addEventListener('click', () => select('general'));
 
 const ALL_SITES = { origins: ['<all_urls>'] };
 $('grant').addEventListener('click', async () => {
@@ -390,8 +427,9 @@ $('grant').addEventListener('click', async () => {
 
 (async () => {
   await load();
+  applyLanguage();
   const hash = location.hash.slice(1);
-  selected = hash === 'stats' || groupById(hash) ? hash : (settings.groups[0] ? settings.groups[0].id : 'stats');
+  selected = PAGES.includes(hash) || groupById(hash) ? hash : (settings.groups[0] ? settings.groups[0].id : 'stats');
   render();
 
   $('permBanner').hidden = await browser.permissions.contains(ALL_SITES);
@@ -404,8 +442,9 @@ $('grant').addEventListener('click', async () => {
     // Adopt changes made elsewhere (popup, block page); our own saves come back identical.
     const incoming = changes.settings && changes.settings.newValue;
     if (incoming && !saveTimer && JSON.stringify(incoming) !== JSON.stringify(settings)) {
-      settings = incoming;
-      if (selected !== 'stats' && !groupById(selected)) selected = settings.groups[0] ? settings.groups[0].id : 'stats';
+      settings = Anchor.normalizeSettings(incoming);
+      applyLanguage();
+      if (!PAGES.includes(selected) && !groupById(selected)) selected = settings.groups[0] ? settings.groups[0].id : 'stats';
       render();
       return;
     }

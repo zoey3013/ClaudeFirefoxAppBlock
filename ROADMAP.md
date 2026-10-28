@@ -1,10 +1,14 @@
-# Ideas para la próxima versión
+# Roadmap
 
-Aún sin empezar.
+## Done in 1.1.0
 
-- [ ] **Idioma inglés / español**: un selector de idioma en la configuración. Se puede hacer con la carpeta `_locales/` de Firefox (`browser.i18n`), o con una tabla de textos propia si se quiere cambiar de idioma sin depender del idioma de Firefox.
-- [ ] **Recordatorio al entrar a una web con límite**: un cuadrito discreto pero visible, por ejemplo en una esquina, que diga que el tiempo está contando o que esta página pertenece a un grupo. No debe ser de pantalla completa. Se puede activar o desactivar por grupo. Necesita un *content script*.
-- [ ] **Actualizaciones automáticas por GitHub**:
-  - poner `update_url` en `manifest.json`, apuntando a un `updates.json` dentro del repo;
-  - subir cada `.xpi` firmado a un GitHub Release.
-- [ ] **Cuenta regresiva en una esquina**: que aparezca cuando quedan 30 segundos o menos, antes de que se bloquee la página por el límite de tiempo, o cuando se acaba un descanso. Usa el mismo *content script* que el recordatorio.
+- [x] **English / Spanish**: a language picker under *General*. By default it follows Firefox's language.
+- [x] **Reminder when you open a site in a group**: a small card in the corner, never full screen. It can be turned on or off per group.
+- [x] **Automatic updates through GitHub**: the Release workflow plus `updates.json`. They only work while the repository is public.
+- [x] **Countdown in the corner** during the last 30 seconds before a site gets blocked, whether because the allowance runs out, a break ends or the schedule starts. It can be turned on or off per group.
+
+## Ideas
+
+- Sync settings across Firefox installs
+- Countdown before a break starts
+- Export and import groups

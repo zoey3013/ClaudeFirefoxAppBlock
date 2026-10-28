@@ -12,20 +12,21 @@
   <main class="wrap">
     <div class="mark" aria-hidden="true"><span></span></div>
     <span class="pill group" id="group"><span class="dot" id="groupDot"></span><span id="groupName"></span></span>
-    <h1 id="title">This site is blocked</h1>
+    <h1 id="title"></h1>
     <p class="reason muted" id="reason"></p>
     <p class="countdown" id="countdown" hidden></p>
 
     <div class="actions" id="actions">
-      <button class="btn primary" id="continue" hidden>Continue to site</button>
+      <button class="btn primary" id="continue" hidden data-i18n="continueToSite">Continue to site</button>
       <button class="btn" id="bypass" hidden></button>
-      <button class="btn ghost" id="close">Close tab</button>
+      <button class="btn ghost" id="close" data-i18n="closeTab">Close tab</button>
     </div>
     <p class="note faint" id="bypassNote" hidden></p>
 
-    <button class="link faint" id="disable" hidden>Turn off this group…</button>
+    <button class="link faint" id="disable" hidden data-i18n="turnOffGroup">Turn off this group…</button>
   </main>
 
+  <script src="../i18n.js"></script>
   <script src="../core.js"></script>
   <script src="../ui/challenge.js"></script>
   <script src="blocked.js"></script>

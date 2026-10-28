@@ -1,0 +1,72 @@
+# Signs the add-on with Mozilla, publishes the .xpi as a GitHub Release,
+# and adds it to updates.json so installed copies update themselves.
+#
+# Run it from GitHub: Actions → Release → Run workflow.
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   AMO_JWT_ISSUER and AMO_JWT_SECRET, from https://addons.mozilla.org/developers/addon/api/key/
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Read version
+        id: version
+        run: echo "value=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check this version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "::error::Version $VERSION was already released. Raise \"version\" in manifest.json first."
+            exit 1
+          fi
+
+      - name: Run tests
+        run: node --test test/core.test.js
+
+      - name: Sign with Mozilla
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          npx --yes web-ext@8 sign --channel=unlisted \
+            --api-key="$AMO_JWT_ISSUER" --api-secret="$AMO_JWT_SECRET" \
+            --ignore-files "test/**" "scripts/**" ".github/**" updates.json README.md ROADMAP.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mv web-ext-artifacts/*.xpi "anchor-$VERSION.xpi"
+          gh release create "v$VERSION" "anchor-$VERSION.xpi" --title "Anchor $VERSION" --generate-notes
+
+      - name: Update updates.json
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          node scripts/add-update.js "$VERSION" \
+            "https://github.com/${{ github.repository }}/releases/download/v$VERSION/anchor-$VERSION.xpi" \
+            "anchor-$VERSION.xpi"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add updates.json
+          git commit -m "Release $VERSION"
+          git push

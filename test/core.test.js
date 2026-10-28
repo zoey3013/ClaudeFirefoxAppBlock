@@ -99,3 +99,44 @@ test('pin hashing is salted and stable', async () => {
   assert.equal(await A.hashPin('1234', 's'), await A.hashPin('1234', 's'));
   assert.notEqual(await A.hashPin('1234', 's'), await A.hashPin('1234', 't'));
 });
+
+test('older settings gain new fields', () => {
+  const old = { version: 1, groups: [{ ...A.newGroup('X'), reminders: undefined }] };
+  delete old.groups[0].reminders;
+  const s = A.normalizeSettings(old);
+  assert.equal(s.language, 'auto');
+  assert.deepEqual(s.groups[0].reminders, { card: true, countdown: true });
+});
+
+test('translations: every Spanish key exists in English and vice versa', () => {
+  const I18n = require('../src/i18n.js');
+  I18n.setLanguage('es');
+  assert.equal(I18n.t('addTo', { name: 'Social' }), 'Añadir a Social');
+  assert.equal(I18n.t('nSites', { n: 1 }), '1 sitio');
+  assert.equal(I18n.t('nSites', { n: 3 }), '3 sitios');
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../src/i18n.js'), 'utf8');
+  const block = (name) => src.slice(src.indexOf(`    ${name}: {`), src.indexOf('\n    },', src.indexOf(`    ${name}: {`)));
+  const keys = (b) => new Set([...b.matchAll(/^ {6}(\w+):/gm)].map((m) => m[1]));
+  const en = keys(block('en')), es = keys(block('es'));
+  assert.deepEqual([...en].filter((k) => !es.has(k)), []);
+  assert.deepEqual([...es].filter((k) => !en.has(k)), []);
+  I18n.setLanguage('en');
+});
+
+test('every t() key used in the UI exists', () => {
+  const fs = require('fs'), path = require('path');
+  const i18nSrc = fs.readFileSync(path.join(__dirname, '../src/i18n.js'), 'utf8');
+  const enBlock = i18nSrc.slice(i18nSrc.indexOf('    en: {'), i18nSrc.indexOf('    es: {'));
+  const known = new Set([...enBlock.matchAll(/^ {6}(\w+):/gm)].map((m) => m[1]));
+  const files = ['blocked/blocked.js', 'popup/popup.js', 'options/options.js', 'options/stats.js', 'ui/challenge.js', 'content/content.js', 'core.js',
+    'blocked/blocked.html', 'popup/popup.html', 'options/options.html'];
+  const missing = [];
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(__dirname, '../src', f), 'utf8');
+    for (const m of src.matchAll(/(?:\bt|I18n\.t|tr)\('(\w+)'|data-i18n(?:-aria|-title)?="(\w+)"/g)) {
+      const k = m[1] || m[2];
+      if (!known.has(k)) missing.push(`${f}: ${k}`);
+    }
+  }
+  assert.deepEqual(missing, []);
+});
