@@ -1,4 +1,4 @@
-/* global Anchor, Challenge, Stats, I18n */
+/* global Anchor, Challenge, Stats, I18n, Theme */
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -40,9 +40,10 @@ async function load() {
   state = Anchor.normalizeState(data.state);
 }
 
-function applyLanguage() {
+function applyPreferences() {
   I18n.setLanguage(settings.language);
   I18n.apply();
+  Theme.apply(settings.theme);
   document.title = t('docSettings');
 }
 
@@ -152,13 +153,21 @@ function renderGeneral() {
   lang.value = settings.language;
   lang.addEventListener('change', async () => {
     settings.language = lang.value;
-    applyLanguage();
+    applyPreferences();
     await save(true);
     render();
   });
+  const theme = segmented([['auto', t('themeAuto')], ['light', t('themeLight')], ['dark', t('themeDark')]], settings.theme,
+    async (value) => {
+      settings.theme = value;
+      applyPreferences();
+      await save(true);
+      render();
+    });
   $('general').replaceChildren(
     el('h1', {}, t('general')),
     card(t('language'), t('languageDesc'), lang),
+    card(t('appearance'), t('appearanceDesc'), theme),
     card(t('about'), t('version', { v: browser.runtime.getManifest().version }), null,
       el('p', { class: 'hint' }, t('updatesNote'))),
   );
@@ -427,7 +436,7 @@ $('grant').addEventListener('click', async () => {
 
 (async () => {
   await load();
-  applyLanguage();
+  applyPreferences();
   const hash = location.hash.slice(1);
   selected = PAGES.includes(hash) || groupById(hash) ? hash : (settings.groups[0] ? settings.groups[0].id : 'stats');
   render();
@@ -443,7 +452,7 @@ $('grant').addEventListener('click', async () => {
     const incoming = changes.settings && changes.settings.newValue;
     if (incoming && !saveTimer && JSON.stringify(incoming) !== JSON.stringify(settings)) {
       settings = Anchor.normalizeSettings(incoming);
-      applyLanguage();
+      applyPreferences();
       if (!PAGES.includes(selected) && !groupById(selected)) selected = settings.groups[0] ? settings.groups[0].id : 'stats';
       render();
       return;

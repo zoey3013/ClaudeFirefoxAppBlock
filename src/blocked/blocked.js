@@ -1,4 +1,4 @@
-/* global Anchor, Challenge, I18n */
+/* global Anchor, Challenge, I18n, Theme */
 'use strict';
 
 const params = new URLSearchParams(location.search);
@@ -14,6 +14,7 @@ async function refresh() {
   const s = Anchor.normalizeSettings(settings);
   I18n.setLanguage(s.language);
   I18n.apply();
+  Theme.apply(s.theme);
   const st = Anchor.normalizeState(state);
   const now = Date.now();
   const { matches, blocker } = Anchor.evaluateUrl(targetUrl, s, st, now);

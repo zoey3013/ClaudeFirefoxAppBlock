@@ -34,8 +34,15 @@
     if (!root || !root.isConnected) {
       root = make('anchor-focus-root');
       document.documentElement.append(root);
+      applyTheme();
     }
     return root;
+  }
+
+  function applyTheme() {
+    if (!root || !status) return;
+    if (status.theme === 'light' || status.theme === 'dark') root.setAttribute('data-theme', status.theme);
+    else root.removeAttribute('data-theme');
   }
 
   const inUse = () => document.visibilityState === 'visible' && document.hasFocus();
@@ -132,6 +139,7 @@
     if (!res) return;
     I18n.setLanguage(res.language);
     status = res;
+    applyTheme();
     syncedAt = Date.now();
     const limited = res.groups.filter((g) => g.remaining !== null).map((g) => g.remaining);
     activeLeft = limited.length ? Math.min(...limited) : Infinity;

@@ -71,7 +71,7 @@ jobs:
           secret="${AMO_JWT_SECRET//[[:space:]]/}"
           npx --yes web-ext@8 sign --channel=unlisted \
             --api-key="$issuer" --api-secret="$secret" \
-            --ignore-files "test/**" "scripts/**" ".github/**" updates.json README.md ROADMAP.md
+            --ignore-files "test/**" "scripts/**" ".github/**" updates.json README.md ROADMAP.md DEVELOPING.md
 
       - name: Publish release
         env:

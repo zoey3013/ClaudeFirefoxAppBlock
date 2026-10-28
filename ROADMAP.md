@@ -9,6 +9,7 @@
 
 ## Ideas
 
+- [x] Light / dark mode setting (1.2.0)
 - Sync settings across Firefox installs
 - Countdown before a break starts
 - Export and import groups

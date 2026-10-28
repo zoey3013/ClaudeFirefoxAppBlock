@@ -45,13 +45,14 @@
     work.schedule.enabled = true;
     work.limit = { enabled: false, minutes: 15, period: 'hour' };
 
-    return { version: 1, language: 'auto', groups: [social, work] };
+    return { version: 1, language: 'auto', theme: 'auto', groups: [social, work] };
   }
 
   /** Fill in fields added in later versions so older saved settings keep working. */
   function normalizeSettings(s) {
     const out = s || defaultSettings();
     if (!out.language) out.language = 'auto';
+    if (!out.theme) out.theme = 'auto'; // 'auto' | 'light' | 'dark'
     for (const g of out.groups || []) {
       if (!g.reminders) g.reminders = { card: true, countdown: true };
     }

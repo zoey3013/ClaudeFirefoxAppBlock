@@ -187,6 +187,7 @@ async function pageStatus(url) {
   return {
     now,
     language: settings.language,
+    theme: settings.theme,
     groups: matches.filter((m) => m.enabled && !m.blocked).map((m) => ({
       id: m.group.id,
       name: m.group.name,

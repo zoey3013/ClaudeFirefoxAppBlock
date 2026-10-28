@@ -10,8 +10,9 @@ anchor-focus-root {
   --a-bg: #ffffff; --a-text: #17171a; --a-muted: #55554f; --a-border: #e4e3de; --a-accent: #2a78d6;
 }
 @media (prefers-color-scheme: dark) {
-  anchor-focus-root { --a-bg: #1c1c1e; --a-text: #f0efec; --a-muted: #c3c2b7; --a-border: #2f2f33; --a-accent: #3987e5; }
+  anchor-focus-root:not([data-theme='light']) { --a-bg: #1c1c1e; --a-text: #f0efec; --a-muted: #c3c2b7; --a-border: #2f2f33; --a-accent: #3987e5; }
 }
+anchor-focus-root[data-theme='dark'] { --a-bg: #1c1c1e; --a-text: #f0efec; --a-muted: #c3c2b7; --a-border: #2f2f33; --a-accent: #3987e5; }
 anchor-focus-card {
   display: grid !important; gap: 4px !important; width: 300px !important; max-width: calc(100vw - 32px) !important;
   padding: 12px 14px !important; border-radius: 12px !important;

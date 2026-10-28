@@ -1,4 +1,4 @@
-/* global Anchor, Challenge, I18n */
+/* global Anchor, Challenge, I18n, Theme */
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -20,6 +20,7 @@ async function load() {
   settings = Anchor.normalizeSettings(data.settings);
   I18n.setLanguage(settings.language);
   I18n.apply();
+  Theme.apply(settings.theme);
   state = Anchor.normalizeState(data.state);
 }
 

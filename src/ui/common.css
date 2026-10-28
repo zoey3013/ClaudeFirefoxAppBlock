@@ -20,8 +20,9 @@
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Dark theme: follows the system unless the user picked a theme (html[data-theme]). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     color-scheme: dark;
     --bg: #141415;
     --surface: #1c1c1e;
@@ -38,6 +39,23 @@
     --warn: #e0a326;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
   }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #141415;
+  --surface: #1c1c1e;
+  --surface-2: #252528;
+  --border: #2f2f33;
+  --text: #f0efec;
+  --text-2: #c3c2b7;
+  --text-3: #8d8c85;
+  --accent: #3987e5;
+  --accent-soft: #1c2a3d;
+  --danger: #e66767;
+  --danger-soft: #3a2224;
+  --ok: #3cbf86;
+  --warn: #e0a326;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 
 * { box-sizing: border-box; }
