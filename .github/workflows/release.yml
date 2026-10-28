@@ -38,6 +38,23 @@ jobs:
             exit 1
           fi
 
+      - name: Check Mozilla API keys
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          missing=""
+          [ -z "$AMO_JWT_ISSUER" ] && missing="$missing AMO_JWT_ISSUER"
+          [ -z "$AMO_JWT_SECRET" ] && missing="$missing AMO_JWT_SECRET"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. Add them under Settings → Secrets and variables → Actions → Repository secrets."
+            exit 1
+          fi
+          case "$AMO_JWT_ISSUER" in
+            user:*) ;;
+            *) echo "::error::AMO_JWT_ISSUER should look like user:12345678:123. Check that issuer and secret aren't swapped."; exit 1 ;;
+          esac
+
       - name: Run tests
         run: node --test test/core.test.js
 
