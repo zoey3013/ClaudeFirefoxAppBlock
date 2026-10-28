@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anchor — Settings</title>
+  <link rel="icon" href="../../icons/icon.svg">
+  <link rel="stylesheet" href="../ui/common.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><img src="../../icons/icon.svg" alt="" width="26" height="26"> Anchor</div>
+
+      <p class="label">Focus groups</p>
+      <nav class="nav" id="groupNav"></nav>
+      <button class="btn ghost new" id="newGroup">+ New group</button>
+
+      <p class="label">Insights</p>
+      <nav class="nav">
+        <button class="nav-item" id="navStats"><span class="icon">▥</span><span class="meta"><span class="name">Stats</span></span></button>
+      </nav>
+
+      <div class="side-note" id="privateNote" hidden>
+        <strong>Private windows aren’t covered.</strong>
+        Open <code>about:addons</code> → Anchor → set <em>Run in Private Windows</em> to <em>Allow</em>.
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="banner" id="permBanner" hidden>
+        <span>Anchor needs permission to access websites so it can block them.</span>
+        <button class="btn small primary" id="grant">Allow access</button>
+      </div>
+      <section id="editor"></section>
+      <section id="stats" hidden></section>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="../core.js"></script>
+  <script src="../ui/challenge.js"></script>
+  <script src="stats.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

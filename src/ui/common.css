@@ -1,0 +1,159 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #f1f1ee;
+  --border: #e4e3de;
+  --text: #17171a;
+  --text-2: #55554f;
+  --text-3: #8a8981;
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --accent-soft: #e6f0fc;
+  --danger: #c93a3a;
+  --danger-soft: #fbeaea;
+  --ok: #1d8a5b;
+  --warn: #b07400;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(20, 20, 30, 0.04), 0 4px 16px rgba(20, 20, 30, 0.05);
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #141415;
+    --surface: #1c1c1e;
+    --surface-2: #252528;
+    --border: #2f2f33;
+    --text: #f0efec;
+    --text-2: #c3c2b7;
+    --text-3: #8d8c85;
+    --accent: #3987e5;
+    --accent-soft: #1c2a3d;
+    --danger: #e66767;
+    --danger-soft: #3a2224;
+    --ok: #3cbf86;
+    --warn: #e0a326;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font: 14px/1.45 var(--font);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+p { margin: 0; }
+[hidden] { display: none !important; }
+
+button, input, select { font: inherit; color: inherit; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; padding: 0 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.btn:hover { background: var(--surface-2); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: var(--danger-soft); border-color: var(--danger-soft); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--surface-2); }
+.btn.small { height: 30px; padding: 0 10px; font-size: 13px; }
+.btn.block { width: 100%; }
+
+.input, select.input {
+  height: 36px; padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.input.num { width: 72px; text-align: center; }
+
+/* Toggle switch */
+.switch { position: relative; display: inline-block; width: 36px; height: 20px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.switch span {
+  position: absolute; inset: 0; border-radius: 20px;
+  background: var(--border); cursor: pointer; transition: background 0.15s;
+}
+.switch span::before {
+  content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  transition: transform 0.15s;
+}
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::before { transform: translateX(16px); }
+.switch input:focus-visible + span { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* Segmented control */
+.segmented {
+  display: inline-flex; padding: 3px; gap: 2px;
+  background: var(--surface-2); border-radius: 10px;
+}
+.segmented button {
+  border: 0; background: transparent; padding: 6px 12px; border-radius: 7px;
+  cursor: pointer; color: var(--text-2); font-weight: 500;
+}
+.segmented button[aria-pressed='true'] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2); white-space: nowrap;
+}
+.pill.blocked { background: var(--danger-soft); color: var(--danger); }
+.pill.active { background: var(--accent-soft); color: var(--accent); }
+
+.muted { color: var(--text-2); }
+.faint { color: var(--text-3); }
+
+/* ---------- Challenge modal ---------- */
+.challenge-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(10, 10, 14, 0.45);
+  display: grid; place-items: center; padding: 16px;
+  animation: fade 0.15s ease-out;
+}
+.challenge {
+  width: min(360px, 100%);
+  background: var(--surface); border-radius: 16px; padding: 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  display: grid; gap: 14px;
+}
+.challenge h3 { font-size: 17px; }
+.challenge .problems { display: grid; gap: 8px; }
+.challenge .problem {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 8px 8px 14px; border-radius: 10px; background: var(--surface-2);
+  font-size: 18px; font-variant-numeric: tabular-nums;
+}
+.challenge .problem .input { width: 84px; text-align: center; font-size: 16px; }
+.challenge .pin { font-size: 22px; letter-spacing: 0.4em; text-align: center; height: 48px; }
+.challenge .error { color: var(--danger); font-size: 13px; min-height: 18px; }
+.challenge .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.shake { animation: shake 0.35s; }
+
+@keyframes fade { from { opacity: 0; } }
+@keyframes shake {
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
