@@ -50,7 +50,10 @@ jobs:
             echo "::error::Missing repository secret(s):$missing. Add them under Settings → Secrets and variables → Actions → Repository secrets."
             exit 1
           fi
-          case "$AMO_JWT_ISSUER" in
+          if [ "$AMO_JWT_SECRET" != "${AMO_JWT_SECRET//[[:space:]]/}" ]; then
+            echo "::warning::AMO_JWT_SECRET contains spaces or line breaks; they will be removed before signing."
+          fi
+          case "${AMO_JWT_ISSUER//[[:space:]]/}" in
             user:*) ;;
             *) echo "::error::AMO_JWT_ISSUER should look like user:12345678:123. Check that issuer and secret aren't swapped."; exit 1 ;;
           esac
@@ -63,8 +66,11 @@ jobs:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
         run: |
+          # Pasted keys often carry stray spaces or line breaks; Mozilla rejects them.
+          issuer="${AMO_JWT_ISSUER//[[:space:]]/}"
+          secret="${AMO_JWT_SECRET//[[:space:]]/}"
           npx --yes web-ext@8 sign --channel=unlisted \
-            --api-key="$AMO_JWT_ISSUER" --api-secret="$AMO_JWT_SECRET" \
+            --api-key="$issuer" --api-secret="$secret" \
             --ignore-files "test/**" "scripts/**" ".github/**" updates.json README.md ROADMAP.md
 
       - name: Publish release
