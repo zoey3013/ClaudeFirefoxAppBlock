@@ -1,0 +1,11 @@
+{
+  "name": "anchor-firefox-tests",
+  "private": true,
+  "description": "End-to-end tests for Anchor in real Firefox",
+  "scripts": {
+    "test": "node e2e.js ../.. ${TMPDIR:-/tmp}/anchor-e2e"
+  },
+  "dependencies": {
+    "selenium-webdriver": "4.51.0"
+  }
+}
