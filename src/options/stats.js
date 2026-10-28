@@ -37,9 +37,9 @@ const Stats = (() => {
   function barChart(days, values) {
     const max = Math.max(...values, 60);
     const tip = el('div', { class: 'chart-tip', role: 'tooltip', hidden: '' });
-    const bars = days.map((t, i) => {
+    const bars = days.map((day, i) => {
       const v = values[i];
-      const d = new Date(t);
+      const d = new Date(day);
       const label = i === days.length - 1 ? t('today') : I18n.days()[d.getDay()];
       const full = d.toLocaleDateString(I18n.lang, { weekday: 'long', month: 'short', day: 'numeric' });
       const col = el('div', { class: 'bar-col', tabindex: '0', 'aria-label': `${full}: ${Anchor.formatDuration(v)}` },
@@ -63,7 +63,7 @@ const Stats = (() => {
   function render(root, settings, state) {
     const now = Date.now();
     const days = daysBack(range === 'today' ? 1 : 7, now);
-    const keys = new Set(days.map((t) => Anchor.dayKey(t)));
+    const keys = new Set(days.map((day) => Anchor.dayKey(day)));
     const start = range === 'today' ? Anchor.periodStart('day', now) : Anchor.periodStart('day', days[0]);
 
     // Totals
@@ -73,7 +73,7 @@ const Stats = (() => {
     let blocks = 0;
     for (const k of keys) blocks += sum(state.blocks[k]);
     let breaks = 0;
-    for (const bp of Object.values(state.bypass)) breaks += (bp.uses || []).filter((t) => t >= start).length;
+    for (const bp of Object.values(state.bypass)) breaks += (bp.uses || []).filter((at) => at >= start).length;
 
     const toggle = el('div', { class: 'segmented' });
     for (const [val, text] of [['today', t('today')], ['week', t('last7')]]) {
@@ -118,7 +118,7 @@ const Stats = (() => {
     });
 
     const week = daysBack(7, now);
-    const weekValues = week.map((t) => sum(state.sites[Anchor.dayKey(t)]));
+    const weekValues = week.map((day) => sum(state.sites[Anchor.dayKey(day)]));
 
     root.replaceChildren(
       head, tiles,

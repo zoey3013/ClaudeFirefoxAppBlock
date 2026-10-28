@@ -140,3 +140,19 @@ test('every t() key used in the UI exists', () => {
   }
   assert.deepEqual(missing, []);
 });
+
+test('UI files never shadow the translation function t', () => {
+  const fs = require('fs'), path = require('path');
+  const files = ['blocked/blocked.js', 'popup/popup.js', 'options/options.js', 'options/stats.js'];
+  const offenders = [];
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(__dirname, '../src', f), 'utf8');
+    if (!/const \{ t \} = I18n/.test(src)) continue;
+    // Arrow/function params or local declarations named exactly `t`.
+    for (const m of src.matchAll(/\(\s*t\s*(?:,[^)]*)?\)\s*=>|\bfunction\s*\w*\s*\(\s*t\s*[,)]|\b(?:let|var)\s+t\b|\bconst\s+t\s*=/g)) {
+      const line = src.slice(0, m.index).split('\n').length;
+      offenders.push(`${f}:${line}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
