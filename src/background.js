@@ -42,13 +42,15 @@ async function focusedActiveTab() {
 
 /** Credit time since the last tick, then start a new slice on whatever is active now. */
 async function flush(settings, state, now) {
-  const { active, idle } = await browser.storage.session.get(['active', 'idle']);
+  const { active } = await browser.storage.session.get('active');
   let changed = false;
   if (active && now > active.start) {
     const start = Math.max(active.start, now - MAX_SLICE_MS);
     Anchor.recordUsage(settings, state, active.url, start, now);
     changed = true;
   }
+  // Ask every time: idle events can be missed while this event page is suspended.
+  const idle = (await browser.idle.queryState(IDLE_SECONDS)) !== 'active';
   const tab = idle ? null : await focusedActiveTab();
   await browser.storage.session.set({ active: tab ? { url: tab.url, start: now } : null });
   return { changed, tab };
@@ -193,11 +195,7 @@ browser.windows.onFocusChanged.addListener(() => tick());
 browser.alarms.onAlarm.addListener(() => tick());
 
 browser.idle.setDetectionInterval(IDLE_SECONDS);
-browser.idle.onStateChanged.addListener(async (s) => {
-  await tick(); // credit time up to now first
-  await browser.storage.session.set({ idle: s !== 'active' });
-  tick();
-});
+browser.idle.onStateChanged.addListener(() => tick());
 
 browser.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.settings) tick();

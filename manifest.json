@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Anchor — Focus Blocker",
   "short_name": "Anchor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Block distracting sites with focus modes, schedules, shared time limits and deliberate unlocks.",
   "icons": {
     "48": "icons/icon.svg",
