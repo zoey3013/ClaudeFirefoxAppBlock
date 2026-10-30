@@ -13,6 +13,13 @@
   - Opening a blocked site from scratch still redirects to the block page, so the site never loads in the background.
   - Fall back to the redirect wherever Firefox doesn't let add-ons run, such as addons.mozilla.org and `about:` pages, or tabs opened before Anchor was installed.
 
+- [ ] **Block by category.** In a group, tick categories such as *Social media*, *Video & streaming*, *News*, *Shopping*, *Games* or *Adult*, on top of or instead of individual sites.
+  - Use open, public category lists. Ship a small built-in copy and refresh it now and then, so new sites in a category get blocked automatically.
+  - Match everything on the computer: never send visited sites to an outside service.
+  - Let a group allow specific sites even when their category is blocked, because lists can put a site in the wrong category or miss it.
+  - Very large categories, such as *Adult*, are downloaded only when someone turns them on.
+  - Check each list's license before bundling it.
+
 ## Ideas
 
 - [x] Light / dark mode setting (1.2.0)
