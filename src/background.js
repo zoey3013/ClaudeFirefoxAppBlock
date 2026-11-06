@@ -4,7 +4,8 @@
 /*
  * Background event page.
  * - Tracks time on the active tab of the focused window (pooled per group, per hour bucket).
- * - Redirects blocked navigations to the block page and sweeps open tabs when limits kick in.
+ * - Redirects blocked navigations to the block page. Pages already open when a block starts get
+ *   the lock overlay instead (so a break doesn't reload them), or a redirect where it can't run.
  * - Handles temporary bypasses requested from the UI.
  * - Answers on-page reminder status requests from the content script.
  *
@@ -45,7 +46,8 @@ async function focusedActiveTab() {
 async function flush(settings, state, now) {
   const { active } = await browser.storage.session.get('active');
   let changed = false;
-  if (active && now > active.start) {
+  // Time on a page that's already blocked (behind the lock overlay) doesn't count.
+  if (active && now > active.start && !Anchor.evaluateUrl(active.url, settings, state, now).blocker) {
     const start = Math.max(active.start, now - MAX_SLICE_MS);
     Anchor.recordUsage(settings, state, active.url, start, now);
     changed = true;
@@ -69,18 +71,44 @@ function countBlock(state, groupId, now) {
   day[groupId] = (day[groupId] || 0) + 1;
 }
 
+/**
+ * Block open tabs that should be blocked, and lift overlays that no longer should be.
+ * Tabs showing the overlay are kept in session storage: { [tabId]: groupId }.
+ */
 async function enforceAll(settings, state, now) {
   const tabs = await browser.tabs.query({});
+  const { locked = {} } = await browser.storage.session.get('locked');
   let changed = false;
   for (const tab of tabs) {
-    if (!Anchor.isTrackable(tab.url)) continue;
-    const { blocker } = Anchor.evaluateUrl(tab.url, settings, state, now);
-    if (!blocker) continue;
+    const wasLocked = tab.id in locked;
+    const blocker = Anchor.isTrackable(tab.url) ? Anchor.evaluateUrl(tab.url, settings, state, now).blocker : null;
+    if (!blocker) {
+      if (wasLocked) {
+        delete locked[tab.id];
+        browser.tabs.sendMessage(tab.id, { type: 'unlock' }, { frameId: 0 }).catch(() => {});
+      }
+      continue;
+    }
+    if (wasLocked) continue;
     countBlock(state, blocker.group.id, now);
     changed = true;
-    browser.tabs.update(tab.id, { url: blockUrl(tab.url, blocker.group.id) }).catch(() => {});
+    locked[tab.id] = blocker.group.id;
+    lockTab(tab, blocker.group.id);
   }
+  await browser.storage.session.set({ locked });
   return changed;
+}
+
+/** Cover the page with the lock overlay; if the page can't show it, go to the block page. */
+function lockTab(tab, groupId) {
+  const redirect = async () => {
+    const { locked = {} } = await browser.storage.session.get('locked');
+    delete locked[tab.id];
+    await browser.storage.session.set({ locked });
+    browser.tabs.update(tab.id, { url: blockUrl(tab.url, groupId) }).catch(() => {});
+  };
+  browser.tabs.sendMessage(tab.id, { type: 'lock', groupId }, { frameId: 0 })
+    .then((res) => { if (!res || !res.locked) redirect(); }, redirect);
 }
 
 /** Wake up exactly when something can change: allowance runs out, bypass ends, schedule flips. */
@@ -202,8 +230,14 @@ async function pageStatus(url) {
   };
 }
 
-browser.runtime.onMessage.addListener((msg) => {
+browser.runtime.onMessage.addListener((msg, sender) => {
   switch (msg && msg.type) {
+    case 'unlockTab': // "Continue" in the overlay; lifted only if the page isn't blocked any more
+      // Reply at once: the overlay asking for this is removed by the tick.
+      tick();
+      return Promise.resolve({ ok: true });
+    case 'closeTab':
+      return sender.tab ? browser.tabs.remove(sender.tab.id) : undefined;
     case 'pageStatus':
       return pageStatus(msg.url);
     case 'bypass':
@@ -220,11 +254,24 @@ browser.runtime.onMessage.addListener((msg) => {
 // ---------- Wiring ----------
 
 browser.tabs.onActivated.addListener(() => tick());
-browser.tabs.onUpdated.addListener((tabId) => {
+browser.tabs.onUpdated.addListener(async (tabId) => {
+  // A new address may not be blocked, or may be a new page without the overlay: re-check it.
+  const { locked = {} } = await browser.storage.session.get('locked');
+  if (tabId in locked) {
+    delete locked[tabId];
+    await browser.storage.session.set({ locked });
+  }
   tick();
   // Single-page sites change URL without reloading; let the on-page reminder re-check.
   browser.tabs.sendMessage(tabId, { type: 'recheck' }).catch(() => {});
 }, { properties: ['url'] });
+browser.tabs.onRemoved.addListener(async (tabId) => {
+  const { locked = {} } = await browser.storage.session.get('locked');
+  if (tabId in locked) {
+    delete locked[tabId];
+    await browser.storage.session.set({ locked });
+  }
+});
 browser.windows.onFocusChanged.addListener(() => tick());
 browser.alarms.onAlarm.addListener(() => tick());
 

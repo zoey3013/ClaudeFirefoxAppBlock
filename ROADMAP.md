@@ -7,11 +7,10 @@
 - [x] **Automatic updates through GitHub**: the Release workflow plus `updates.json`. They only work while the repository is public.
 - [x] **Countdown in the corner** during the last 30 seconds before a site gets blocked, whether because the allowance runs out, a break ends or the schedule starts. It can be turned on or off per group.
 
-## To do
+## Done in 1.3.0
 
-- [ ] **Lock screen as an overlay, without reloading.** When a page that's already open gets blocked (allowance runs out, break ends, schedule starts), cover it with a full-page overlay instead of redirecting the tab, and pause its videos and audio. Taking a break or unlocking removes the overlay, so you keep your scroll position, video time and anything you typed.
-  - Opening a blocked site from scratch still redirects to the block page, so the site never loads in the background.
-  - Fall back to the redirect wherever Firefox doesn't let add-ons run, such as addons.mozilla.org and `about:` pages, or tabs opened before Anchor was installed.
+- [x] **Lock screen as an overlay, without reloading.** A page that's already open when it gets blocked is covered by the lock screen instead of being sent to the block page, and its videos and audio pause. A break lifts it with the page exactly as it was. Opening a blocked site from scratch still goes to the block page. Where the overlay can't run, Anchor falls back to the block page.
+- [x] **Reminders at the top center** of the page.
 
 ## Ideas
 

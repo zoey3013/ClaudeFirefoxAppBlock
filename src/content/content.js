@@ -2,14 +2,17 @@
 'use strict';
 
 /*
- * On-page reminders for sites in a focus group:
+ * On-page parts of Anchor for sites in a focus group:
  * - a small card when the page opens (time left, break, or when it will be blocked);
- * - a countdown pill in the last 30 seconds before the site gets blocked.
- * The background does the actual blocking; this only informs.
+ * - a countdown pill in the last 30 seconds before the site gets blocked;
+ * - the lock overlay: when an open page gets blocked, the background asks us to cover it
+ *   instead of navigating away, so a break can lift the lock without reloading the page.
  */
 (() => {
   if (window.top !== window || !Anchor.isTrackable(location.href)) return;
 
+  const BLOCK_PAGE = browser.runtime.getURL('src/blocked/blocked.html');
+  const LOCK_READY_MS = 3000;
   const CARD_MS = 8000;
   const COUNTDOWN_FROM = 30;
   const RESYNC_MS = 20000;
@@ -22,6 +25,7 @@
   let activeLeft = Infinity; // seconds of allowance left, only drains while this tab is in use
   let lastUrl = '';
   let cardTimer = null;
+  let lock = null; // { el, frame, groupId, paused: [media], overflow, guard }
 
   const make = (tag, attrs = {}, ...kids) => {
     const n = document.createElement(tag);
@@ -127,6 +131,73 @@
     if (s <= 10) pill.setAttribute('data-urgent', ''); else pill.removeAttribute('data-urgent');
   }
 
+  // ---------- Lock overlay ----------
+
+  // While locked, the page underneath keeps its state but gets no keys and can't play media.
+  const swallowKey = (e) => { if (lock) { e.stopImmediatePropagation(); e.preventDefault(); } };
+  const stopPlayback = (e) => { if (lock && e.target instanceof HTMLMediaElement) e.target.pause(); };
+
+  function pauseMedia() {
+    const paused = [];
+    for (const m of document.querySelectorAll('video, audio')) {
+      if (!m.paused) { m.pause(); paused.push(m); }
+    }
+    return paused;
+  }
+
+  function lockPage(groupId) {
+    if (lock) return Promise.resolve({ locked: true, already: true });
+    hideCard();
+    if (pill) { pill.remove(); pill = null; }
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+
+    const params = new URLSearchParams({ url: location.href, g: groupId, embedded: '1' });
+    const frame = make('iframe', { src: `${BLOCK_PAGE}?${params}`, title: 'Anchor', allow: '' });
+    const el = make('anchor-focus-lock', {}, frame);
+    const html = document.documentElement;
+    lock = {
+      el, frame, groupId,
+      paused: pauseMedia(),
+      overflow: [html.style.getPropertyValue('overflow'), html.style.getPropertyPriority('overflow')],
+      // Put the overlay back if the page removes it.
+      guard: new MutationObserver(() => { if (lock && !el.isConnected) html.append(el); }),
+    };
+    html.style.setProperty('overflow', 'hidden', 'important');
+    html.append(el);
+    lock.guard.observe(html, { childList: true });
+    frame.focus();
+
+    // The block page says hello once it loads. If a page's security policy stops it from
+    // loading, give up and let the background send the tab to the block page instead.
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { window.removeEventListener('message', onReady); unlockPage(false); resolve({ locked: false }); }, LOCK_READY_MS);
+      function onReady(e) {
+        if (e.source !== frame.contentWindow || !e.data || e.data.anchor !== 'lock-ready') return;
+        clearTimeout(timer);
+        window.removeEventListener('message', onReady);
+        resolve({ locked: true });
+      }
+      window.addEventListener('message', onReady);
+    });
+  }
+
+  function unlockPage(resume = true) {
+    if (!lock) return { unlocked: false };
+    const { el, paused, overflow, guard } = lock;
+    lock = null;
+    guard.disconnect();
+    el.remove();
+    const html = document.documentElement;
+    if (overflow[0]) html.style.setProperty('overflow', overflow[0], overflow[1]);
+    else html.style.removeProperty('overflow');
+    if (resume) for (const m of paused) m.play().catch(() => {});
+    sync(false);
+    return { unlocked: true };
+  }
+
+  for (const type of ['keydown', 'keypress', 'keyup']) window.addEventListener(type, swallowKey, true);
+  document.addEventListener('play', stopPlayback, true);
+
   // ---------- Sync ----------
 
   async function sync(fresh) {
@@ -143,6 +214,7 @@
     syncedAt = Date.now();
     const limited = res.groups.filter((g) => g.remaining !== null).map((g) => g.remaining);
     activeLeft = limited.length ? Math.min(...limited) : Infinity;
+    if (lock) return;
     if (fresh) showCard();
     renderCountdown(secondsLeft(Date.now()));
   }
@@ -160,11 +232,15 @@
     lastTick = now;
     if (!status) return;
     if (now - syncedAt > RESYNC_MS) sync(false);
-    renderCountdown(secondsLeft(now));
+    if (!lock) renderCountdown(secondsLeft(now));
   }, 1000);
 
   browser.runtime.onMessage.addListener((msg) => {
-    if (msg && msg.type === 'recheck') onUrlMaybeChanged();
+    if (!msg) return undefined;
+    if (msg.type === 'recheck') onUrlMaybeChanged();
+    if (msg.type === 'lock') return lockPage(msg.groupId);
+    if (msg.type === 'unlock') return Promise.resolve(unlockPage());
+    return undefined;
   });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync(false); });
 

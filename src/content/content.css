@@ -1,12 +1,14 @@
 /* Anchor on-page reminders. Custom element names and a full reset keep page styles out. */
-anchor-focus-root, anchor-focus-root * {
+anchor-focus-root, anchor-focus-root *, anchor-focus-lock, anchor-focus-lock * {
   all: initial !important;
   box-sizing: border-box !important;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif !important;
 }
+/* Reminder card and countdown sit at the top center of the page. */
 anchor-focus-root {
-  position: fixed !important; right: 16px !important; bottom: 16px !important;
-  z-index: 2147483647 !important; display: block !important;
+  position: fixed !important; top: 16px !important; left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 2147483647 !important; display: grid !important; justify-items: center !important; gap: 8px !important;
   --a-bg: #ffffff; --a-text: #17171a; --a-muted: #55554f; --a-border: #e4e3de; --a-accent: #2a78d6;
 }
 @media (prefers-color-scheme: dark) {
@@ -22,7 +24,7 @@ anchor-focus-card {
   animation: anchor-focus-in 0.25s ease-out !important;
   transition: opacity 0.3s, transform 0.3s !important;
 }
-anchor-focus-card[data-leaving] { opacity: 0 !important; transform: translateY(8px) !important; }
+anchor-focus-card[data-leaving] { opacity: 0 !important; transform: translateY(-8px) !important; }
 anchor-focus-head { display: flex !important; align-items: center !important; gap: 8px !important; }
 anchor-focus-dot { display: block !important; width: 10px !important; height: 10px !important; border-radius: 50% !important; flex: none !important; }
 anchor-focus-title { display: block !important; font-size: 13px !important; font-weight: 600 !important; color: var(--a-text) !important; flex: 1 !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
@@ -44,7 +46,20 @@ anchor-focus-countdown anchor-focus-text { font-size: 13px !important; }
 anchor-focus-time { display: block !important; font-size: 20px !important; font-weight: 700 !important; font-variant-numeric: tabular-nums !important; color: var(--a-text) !important; min-width: 44px !important; }
 anchor-focus-countdown[data-urgent] anchor-focus-time { color: #e34948 !important; }
 
-@keyframes anchor-focus-in { from { opacity: 0; transform: translateY(8px); } }
+/* Lock overlay: covers the whole page; the block page runs inside the frame. */
+anchor-focus-lock {
+  position: fixed !important; inset: 0 !important; z-index: 2147483647 !important;
+  display: block !important; background: #f6f6f4 !important;
+  animation: anchor-focus-fade 0.2s ease-out !important;
+}
+@media (prefers-color-scheme: dark) { anchor-focus-lock { background: #141415 !important; } }
+anchor-focus-lock iframe {
+  display: block !important; width: 100% !important; height: 100% !important;
+  border: 0 !important; margin: 0 !important; background: transparent !important;
+}
+
+@keyframes anchor-focus-in { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes anchor-focus-fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  anchor-focus-card, anchor-focus-countdown { animation: none !important; transition: none !important; }
+  anchor-focus-card, anchor-focus-countdown, anchor-focus-lock { animation: none !important; transition: none !important; }
 }

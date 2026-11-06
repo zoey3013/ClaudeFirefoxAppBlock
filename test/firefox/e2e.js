@@ -47,9 +47,24 @@ function zipDir(dir, skip) {
   return Buffer.concat([...parts, cd, end]);
 }
 
+// One second of silence, so the test can check that the lock pauses media and a break resumes it.
+function silentWav() {
+  const rate = 8000, n = rate, b = Buffer.alloc(44 + n);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate, 28);
+  b.writeUInt16LE(1, 32); b.writeUInt16LE(8, 34); b.write('data', 36); b.writeUInt32LE(n, 40); b.fill(128, 44);
+  return b;
+}
+
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'content-type': 'text/html' });
-  res.end(`<!doctype html><title>Test site</title><h1>Test site ${req.url}</h1>`);
+  if (req.url === '/silence.wav') { res.writeHead(200, { 'content-type': 'audio/wav' }); res.end(silentWav()); return; }
+  const headers = { 'content-type': 'text/html' };
+  // A strict page policy that forbids frames, to check the overlay's fallback.
+  if (req.url.startsWith('/strict')) headers['content-security-policy'] = "default-src 'self'; frame-src 'none'";
+  res.writeHead(200, headers);
+  res.end(`<!doctype html><title>Test site</title><h1>Test site ${req.url}</h1>
+    <input id="note"><audio id="snd" src="/silence.wav" loop></audio>
+    <div style="height:4000px;background:linear-gradient(#eef,#fee)"></div>`);
 }).listen(8123, '127.0.0.1');
 
 (async () => {
@@ -61,6 +76,7 @@ const server = http.createServer((req, res) => {
     .addArguments('-headless')
     .setPreference('extensions.webextensions.uuids', JSON.stringify({ 'anchor-focus@local': UUID }))
     .setPreference('network.proxy.type', 0)
+    .setPreference('media.autoplay.default', 0)
     .setPreference('devtools.console.stdout.content', true)
     .setPreference('devtools.console.stdout.chrome', true);
   if (fs.existsSync('/opt/firefox/firefox')) opts.setBinary('/opt/firefox/firefox');
@@ -131,9 +147,12 @@ const server = http.createServer((req, res) => {
     check('break returns to the site', after.startsWith(`${SITE}/watch`), after);
     const card = await text('anchor-focus-card');
     check('on-page reminder card appears', !!card, card ? card.replace(/\s+/g, ' ') : 'none');
+    const topCenter = (css) => driver.executeScript(`const r = document.querySelector(arguments[0]).getBoundingClientRect();
+      return Math.abs(r.left + r.width / 2 - document.documentElement.clientWidth / 2) < 4 && r.top < 40;`, css);
+    check('reminder card is at the top center', await topCenter('anchor-focus-card').catch(() => false));
     await shot('ff-card');
 
-    // Allowance: 1 minute, 35 s already used -> countdown, then blocked.
+    // Allowance: 1 minute, 35 s already used -> countdown, then the open page gets the lock overlay.
     await goExt('src/options/options.html');
     await run(async () => {
       const { settings, state } = await browser.storage.local.get(['settings', 'state']);
@@ -146,16 +165,50 @@ const server = http.createServer((req, res) => {
     });
     await sleep(300);
     await goSite('/feed'); await sleep(2500);
+    // Page state that a reload would lose.
+    await driver.findElement(By.id('note')).sendKeys('half-written comment');
+    await driver.executeScript(`window.scrollTo(0, 1500); window.marker = 'same page'; document.getElementById('snd').play();`);
     const pill = await text('anchor-focus-time');
     check('countdown shows under 30 s left', !!pill, pill || 'none');
+    check('countdown is at the top center', await topCenter('anchor-focus-countdown').catch(() => false));
     await shot('ff-countdown');
-    let blockedAfter = null;
+    let lockedAfter = null;
     for (let i = 0; i < 45; i++) {
       await sleep(1000);
-      if ((await driver.getCurrentUrl()).startsWith(EXT)) { blockedAfter = i + 3; break; }
+      if (await count('anchor-focus-lock')) { lockedAfter = i + 3; break; }
     }
-    check('site is blocked when the allowance runs out', !!blockedAfter, blockedAfter ? `after ~${blockedAfter}s` : 'still open after 48s');
-    check('block reason mentions the limit', /used your/.test((await text('#reason')) || ''), await text('#reason'));
+    check('lock overlay covers the page when the allowance runs out', !!lockedAfter, lockedAfter ? `after ~${lockedAfter}s` : 'no overlay after 48s');
+    await sleep(800);
+    check('page stays open underneath (no redirect)', (await driver.getCurrentUrl()).startsWith(`${SITE}/feed`), await driver.getCurrentUrl());
+    check('audio is paused while locked', await driver.executeScript('return document.getElementById("snd").paused'));
+    await shot('ff-lock-overlay');
+
+    await driver.switchTo().frame(await driver.findElement(By.css('anchor-focus-lock iframe')));
+    check('overlay shows the limit reason', /used your/.test((await text('#reason')) || ''), await text('#reason'));
+    await driver.findElement(By.id('bypass')).click();
+    await driver.switchTo().defaultContent();
+    await sleep(2000);
+    check('break lifts the overlay', (await count('anchor-focus-lock')) === 0);
+    const kept = await driver.executeScript(`return { marker: window.marker, y: Math.round(scrollY),
+      note: document.getElementById('note').value, playing: !document.getElementById('snd').paused };`);
+    check('no reload: page, scroll and typed text kept', kept.marker === 'same page' && kept.y === 1500 && kept.note === 'half-written comment', JSON.stringify(kept));
+    check('audio resumes after the break', kept.playing);
+
+    // A page whose security policy forbids frames: falls back to the block page.
+    await goSite('/strict'); await sleep(1500);
+    await goExt('src/options/options.html');
+    await run(async () => {
+      const { state } = await browser.storage.local.get('state');
+      for (const bp of Object.values(state.bypass)) bp.until = 0; // end the break
+      await browser.storage.local.set({ state });
+      await browser.runtime.sendMessage({ type: 'tick' });
+    });
+    await driver.switchTo().window(siteTab);
+    await sleep(5000);
+    const strictUrl = await driver.getCurrentUrl();
+    const strictOverlay = await count('anchor-focus-lock');
+    check('strict page is still blocked (overlay or block page)', strictUrl.startsWith(EXT) || strictOverlay > 0,
+      strictUrl.startsWith(EXT) ? 'fell back to the block page' : 'overlay shown');
 
     await goExt('src/popup/popup.html');
     check('popup renders groups', (await count('#groups li')) === 2);

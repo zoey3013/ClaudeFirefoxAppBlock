@@ -21,7 +21,9 @@ npx web-ext run                                                                 
 - the settings, stats, general and popup pages render;
 - a blocked site redirects to the block page;
 - a break returns you to the site and shows the reminder card;
-- the 30-second countdown appears and ends in a block;
+- the reminder card and the 30-second countdown sit at the top center;
+- when the allowance runs out, the open page gets the lock overlay instead of a redirect, its audio pauses, and a break lifts it with no reload (scroll position and typed text kept);
+- the overlay also works on a page whose security policy forbids frames;
 - switching to Spanish and to dark mode works;
 - no script errors reach Firefox's Browser Console.
 
@@ -75,7 +77,7 @@ src/i18n.js            English and Spanish translations
 src/core.js            shared logic: model, matching, schedules, limits, puzzles
 src/background.js      time tracking, blocking (webRequest + tab sweeps), breaks
 src/blocked/           the page shown instead of a blocked site
-src/content/           on-page reminder card and 30-second countdown
+src/content/           on-page reminder card, 30-second countdown and lock overlay
 src/popup/             toolbar popup: current site, quick add, group toggles
 src/options/           settings editor, general preferences and stats
 src/ui/                shared styles, theme switching and the unlock challenge

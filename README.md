@@ -47,8 +47,8 @@ Click the Anchor icon in the toolbar to:
 - You'll need it to take a break, change the group or turn it off. Turning a group on or adding a site never needs it.
 
 **On-page reminders**, both optional:
-- A small note in the corner when you open one of the group's sites. It tells you that your time is counting, how much is left, or when the site will be blocked.
-- A countdown in the corner during the last 30 seconds before the site is blocked.
+- A small note at the top of the page when you open one of the group's sites. It tells you that your time is counting, how much is left, or when the site will be blocked.
+- A countdown at the top of the page during the last 30 seconds before the site is blocked.
 
 ## How blocking works
 
@@ -57,6 +57,8 @@ Click the Anchor icon in the toolbar to:
 - Outside those hours, its sites stay open until the **time allowance** runs out.
 - If a group has neither a schedule nor a time allowance, its sites are **always** blocked.
 - During a **break**, the group doesn't block.
+
+If a site gets blocked while you have it open, Anchor covers it with the lock screen instead of closing the page. Videos and audio pause. When you take a break, the lock screen disappears and you're right where you left off: same scroll position, same video, anything you typed still there.
 
 Your time only counts while one of the group's sites is the tab you're looking at. It stops when your computer is locked or you've been away for 10 minutes.
 

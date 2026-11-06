@@ -4,6 +4,9 @@
 const params = new URLSearchParams(location.search);
 const targetUrl = params.get('url') || '';
 const hintGroupId = params.get('g');
+// Embedded: shown inside the lock overlay on top of the still-open site, rather than in place of it.
+const embedded = params.get('embedded') === '1';
+if (embedded) document.documentElement.classList.add('embedded');
 const $ = (id) => document.getElementById(id);
 const { t } = I18n;
 
@@ -19,8 +22,10 @@ async function refresh() {
   const now = Date.now();
   const { matches, blocker } = Anchor.evaluateUrl(targetUrl, s, st, now);
   const status = blocker || matches.find((m) => m.group.id === hintGroupId) || matches[0] || null;
+  const first = !view;
   view = { settings: s, state: st, status, blocked: !!blocker };
   render();
+  if (first && embedded) parent.postMessage({ anchor: 'lock-ready' }, '*');
 }
 
 function periodWord(p) { return t(p === 'hour' ? 'perHour' : 'perToday'); }
@@ -97,21 +102,21 @@ function clock(ms) {
 }
 
 function goToSite() {
-  if (targetUrl && Anchor.isTrackable(targetUrl)) location.replace(targetUrl);
+  // In the overlay the site is still underneath: ask for the overlay to be lifted.
+  if (embedded) browser.runtime.sendMessage({ type: 'unlockTab' }).catch(() => {});
+  else if (targetUrl && Anchor.isTrackable(targetUrl)) location.replace(targetUrl);
 }
 
 $('continue').addEventListener('click', goToSite);
 
-$('close').addEventListener('click', async () => {
-  const tab = await browser.tabs.getCurrent();
-  browser.tabs.remove(tab.id);
-});
+$('close').addEventListener('click', () => browser.runtime.sendMessage({ type: 'closeTab' }).catch(() => {}));
 
 $('bypass').addEventListener('click', async () => {
   const g = view.status.group;
   if (!(await Challenge.run(g, t('actionBreak', { n: g.bypass.minutes, name: g.name })))) return;
   const res = await browser.runtime.sendMessage({ type: 'bypass', groupId: g.id });
-  if (res && res.ok) goToSite();
+  // In the overlay, the background lifts it as soon as the break starts.
+  if (res && res.ok) { if (!embedded) goToSite(); }
   else { $('bypassNote').textContent = t((res && res.error) || 'breakFailed'); }
 });
 

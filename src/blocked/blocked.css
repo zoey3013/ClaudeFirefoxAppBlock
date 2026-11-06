@@ -18,3 +18,5 @@ h1 { font-size: 26px; word-break: break-word; }
 .link:hover { color: var(--text-2); }
 @keyframes breathe { 50% { transform: scale(1.06); opacity: 0.85; } }
 @media (prefers-reduced-motion: reduce) { .mark { animation: none; } }
+/* Inside the lock overlay: never scroll the site underneath. */
+html.embedded, html.embedded body { overscroll-behavior: none; }
