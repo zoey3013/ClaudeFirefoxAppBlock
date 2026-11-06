@@ -65,11 +65,13 @@ jobs:
         env:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          # Hide npm's "deprecated" notices about web-ext's own dependencies; real errors still show.
+          NPM_CONFIG_LOGLEVEL: error
         run: |
           # Pasted keys often carry stray spaces or line breaks; Mozilla rejects them.
           issuer="${AMO_JWT_ISSUER//[[:space:]]/}"
           secret="${AMO_JWT_SECRET//[[:space:]]/}"
-          npx --yes web-ext@8 sign --channel=unlisted \
+          npx --yes web-ext@10 sign --channel=unlisted \
             --api-key="$issuer" --api-secret="$secret" \
             --ignore-files "test/**" "scripts/**" ".github/**" updates.json README.md ROADMAP.md DEVELOPING.md
 
