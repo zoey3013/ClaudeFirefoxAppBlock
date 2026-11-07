@@ -98,22 +98,14 @@ function card(title, desc, control, ...body) {
 
 function summarize(g) {
   const where = g.mode === 'allow' ? t('whereAllow') : t('nSites', { n: g.sites.length });
-  if (!g.schedule.enabled && !g.limit.enabled) return t('sumAlways', { where }) + daysSummary(g);
+  if (!g.schedule.enabled && !g.limit.enabled) return t('sumAlways', { where });
   const parts = [];
   if (g.schedule.enabled) parts.push(t('sumSchedule', { where }));
   if (g.limit.enabled) {
     const vars = { where, d: Anchor.formatDuration(g.limit.minutes * 60), per: t(g.limit.period === 'day' ? 'unitDay' : 'unitHour') };
     parts.push(t(g.schedule.enabled ? 'sumLimitAfter' : 'sumLimit', vars));
   }
-  return parts.join('; ') + '.' + daysSummary(g);
-}
-
-const WEEK = [1, 2, 3, 4, 5, 6, 0]; // Monday first, like the schedule
-
-function daysSummary(g) {
-  if (g.days.length === 7) return '';
-  const names = I18n.days();
-  return ' ' + t('sumDays', { days: WEEK.filter((d) => g.days.includes(d)).map((d) => names[d]).join(', ') || '—' });
+  return parts.join('; ') + '.';
 }
 
 // ---------- Sidebar ----------
@@ -292,7 +284,6 @@ function renderEditor() {
     scheduleCard(g, changed),
     limitCard(g, changed),
     bypassCard(g, changed),
-    daysCard(g, changed),
     remindersCard(g, changed),
     lockCard(g, changed),
   );
@@ -377,8 +368,13 @@ function scheduleCard(g, changed) {
   const body = sch.enabled
     ? [rules, el('div', {}, addRule), el('p', { class: 'hint' }, t('scheduleHint'))]
     : [];
+  // Shown even without a schedule: a holiday off also pauses the time allowance.
+  const noCountry = settings.country === 'none';
+  const holidays = el('div', { class: 'check-row holidays-row' },
+    el('div', {}, el('strong', {}, t('holidaysOff')), el('span', { class: 'hint' }, t(noCountry ? 'holidaysNoCountry' : 'holidaysOffHint'))),
+    switchEl(g.holidaysOff, (on) => { g.holidaysOff = on; changed(); }, t('holidaysOff')));
   return card(t('schedule'), t('scheduleDesc'),
-    switchEl(sch.enabled, (on) => { sch.enabled = on; changed(true); }, t('useSchedule')), ...body);
+    switchEl(sch.enabled, (on) => { sch.enabled = on; changed(true); }, t('useSchedule')), ...body, holidays);
 }
 
 function limitCard(g, changed) {
@@ -415,25 +411,6 @@ function bypassCard(g, changed) {
   ] : [];
   return card(t('breaks'), t('breaksDesc'),
     switchEl(bp.enabled, (on) => { bp.enabled = on; changed(true); }, t('allowBreaks')), ...body);
-}
-
-function daysCard(g, changed) {
-  const names = I18n.days();
-  const initials = I18n.dayInitials();
-  const days = el('div', { class: 'days' }, ...WEEK.map((d) => {
-    const b = el('button', { type: 'button', class: 'day', 'aria-pressed': String(g.days.includes(d)), 'aria-label': names[d], title: names[d] }, initials[d]);
-    b.addEventListener('click', () => {
-      g.days = g.days.includes(d) ? g.days.filter((x) => x !== d) : [...g.days, d].sort();
-      b.setAttribute('aria-pressed', String(g.days.includes(d)));
-      changed();
-    });
-    return b;
-  }));
-  const noCountry = settings.country === 'none';
-  const holidays = el('div', { class: 'check-row' },
-    el('div', {}, el('strong', {}, t('holidaysOff')), el('span', { class: 'hint' }, t(noCountry ? 'holidaysNoCountry' : 'holidaysOffHint'))),
-    switchEl(g.holidaysOff, (on) => { g.holidaysOff = on; changed(); }, t('holidaysOff')));
-  return card(t('activeDays'), t('activeDaysDesc'), null, days, holidays);
 }
 
 function remindersCard(g, changed) {

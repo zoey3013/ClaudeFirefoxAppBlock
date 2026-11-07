@@ -33,15 +33,11 @@ Click the Anchor icon in the toolbar to:
 **Schedule**
 - Block the sites completely during set hours on the days you choose, for example Monday to Friday, 9:00 to 17:00.
 - You can add several time ranges, and a range can run overnight.
+- **Off on public holidays:** on your country's holidays the group blocks nothing and your time there doesn't count. Choose the country under **General**.
 
 **Time allowance**
 - Give yourself a number of minutes **per day** or **per hour**.
 - The time is shared by every site in the group: 20 minutes on one site leaves 10 for the rest. When it runs out, all of them are blocked until it resets.
-
-**Active days**
-- Pick the days the group works, like a phone alarm. On the other days it blocks nothing and your time there doesn't count.
-- For different rules on different days, duplicate a group (**Duplicate group** at the bottom of its settings) and give each copy its own days, for example 30 minutes on weekdays and 2 hours on weekends.
-- Turn on **Off on public holidays** to let the group rest on your country's holidays.
 
 **Temporary breaks**
 - When a site is blocked, you can take a short break from the block page, for example 5 minutes.

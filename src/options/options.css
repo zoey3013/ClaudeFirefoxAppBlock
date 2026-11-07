@@ -149,3 +149,4 @@ code { font-size: 12px; background: var(--surface); padding: 1px 4px; border-rad
 .holiday-list li.today { background: var(--accent-soft); }
 .holiday-date { font-variant-numeric: tabular-nums; color: var(--text-2); }
 .holiday-list li.past .holiday-date { color: var(--text-3); }
+.holidays-row { padding-top: 14px; border-top: 1px solid var(--border); }

@@ -171,22 +171,6 @@ test('Dominican holidays: parsed with moved days on their new date', () => {
   assert.deepEqual(H.parse('XX', []), []);
 });
 
-test('active days: a group blocks nothing on days it is off', () => {
-  const settings = { groups: [A.newGroup('Weekdays')] };
-  const g = settings.groups[0];
-  g.sites = ['a.com'];
-  g.limit.enabled = false; // always blocking when active
-  g.days = [1, 2, 3, 4, 5];
-  const state = A.emptyState();
-  const saturday = at('2026-11-07T12:00'), monday = at('2026-11-09T12:00');
-  const sat = A.evaluateUrl('https://a.com', settings, state, saturday);
-  assert.equal(sat.blocker, null);
-  assert.equal(sat.matches[0].off, 'day');
-  require('../src/i18n.js').setLanguage('en');
-  assert.equal(A.describeStatus(sat.matches[0], saturday).text, 'Not today');
-  assert.equal(A.evaluateUrl('https://a.com', settings, state, monday).blocker.reason, 'always');
-});
-
 test('holidays off: the group rests on a holiday only if switched on', () => {
   const settings = { groups: [A.newGroup('Work')] };
   const g = settings.groups[0];
@@ -203,24 +187,26 @@ test('holidays off: the group rests on a holiday only if switched on', () => {
   assert.equal(r.matches[0].holiday.name, 'Día de la Constitución');
 });
 
-test('time on a day off does not count toward the allowance', () => {
-  const settings = { groups: [A.newGroup('Weekdays')] };
+test('time on a holiday off does not count toward the allowance', () => {
+  const settings = { groups: [A.newGroup('Work')] };
   const g = settings.groups[0];
   g.sites = ['a.com'];
-  g.days = [1, 2, 3, 4, 5];
+  g.holidaysOff = true;
   const state = A.emptyState();
-  A.recordUsage(settings, state, 'https://a.com', at('2026-11-07T10:00'), at('2026-11-07T10:10')); // Saturday
-  assert.equal(A.usedSeconds(state, g.id, 'day', at('2026-11-07T11:00')), 0);
-  assert.equal(state.sites['2026-11-07']['a.com'], 600); // still in stats
-  A.recordUsage(settings, state, 'https://a.com', at('2026-11-09T10:00'), at('2026-11-09T10:10')); // Monday
-  assert.equal(A.usedSeconds(state, g.id, 'day', at('2026-11-09T11:00')), 600);
+  state.holidays = { country: 'DO', fetchedAt: 1, days: [{ date: '2026-11-09', name: 'Día de la Constitución' }] };
+  A.recordUsage(settings, state, 'https://a.com', at('2026-11-09T10:00'), at('2026-11-09T10:10'));
+  assert.equal(A.usedSeconds(state, g.id, 'day', at('2026-11-09T11:00')), 0);
+  assert.equal(state.sites['2026-11-09']['a.com'], 600); // still in stats
+  A.recordUsage(settings, state, 'https://a.com', at('2026-11-10T10:00'), at('2026-11-10T10:10'));
+  assert.equal(A.usedSeconds(state, g.id, 'day', at('2026-11-10T11:00')), 600);
 });
 
-test('older settings gain active days, holidays switch and country', () => {
+test('older settings gain the holidays switch and country; 1.4.0 active days are dropped', () => {
   const g = A.newGroup('Old');
-  delete g.days; delete g.holidaysOff;
+  delete g.holidaysOff;
+  g.days = [1, 2, 3, 4, 5];
   const s = A.normalizeSettings({ version: 1, groups: [g] });
-  assert.deepEqual(s.groups[0].days, [0, 1, 2, 3, 4, 5, 6]);
+  assert.equal('days' in s.groups[0], false);
   assert.equal(s.groups[0].holidaysOff, false);
   assert.equal(s.country, 'none');
 });

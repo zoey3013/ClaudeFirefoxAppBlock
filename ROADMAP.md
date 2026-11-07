@@ -12,9 +12,8 @@
 - [x] **Lock screen as an overlay, without reloading.** A page that's already open when it gets blocked is covered by the lock screen instead of being sent to the block page, and its videos and audio pause. A break lifts it with the page exactly as it was. Opening a blocked site from scratch still goes to the block page. Where the overlay can't run, Anchor falls back to the block page.
 - [x] **Reminders at the top center** of the page.
 
-## Done in 1.4.0
+## Done in 1.4
 
-- [x] **Active days, like a phone alarm.** Each group works only on the days you tick. For different rules on different days, duplicate the group.
 - [x] **Off on public holidays**, with a country picker under *General* (Dominican Republic for now, from the Ministry of Labor's list, downloaded each new year or on demand).
 - [x] **Duplicate group** button.
 

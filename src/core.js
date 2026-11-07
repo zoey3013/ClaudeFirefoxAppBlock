@@ -28,7 +28,6 @@
       bypass: { enabled: true, minutes: 5, maxUses: 3, period: 'day' },
       lock: { method: 'puzzle', pinHash: null, salt: null }, // 'none' | 'puzzle' | 'pin'
       reminders: { card: true, countdown: true }, // on-page notes shown by the content script
-      days: [0, 1, 2, 3, 4, 5, 6], // days of the week the group works on (0 = Sunday)
       holidaysOff: false, // take public holidays off (country chosen in settings)
     };
   }
@@ -58,7 +57,7 @@
     if (!out.country) out.country = 'none'; // holidays: 'none' or a key of Holidays.COUNTRIES
     for (const g of out.groups || []) {
       if (!g.reminders) g.reminders = { card: true, countdown: true };
-      if (!Array.isArray(g.days)) g.days = [0, 1, 2, 3, 4, 5, 6];
+      delete g.days; // 1.4.0 had per-group active days; the schedule's days cover that
       if (typeof g.holidaysOff !== 'boolean') g.holidaysOff = false;
     }
     out.groups = out.groups || [];
@@ -214,10 +213,8 @@
     return h.days.find((d) => d.date === dk) || null;
   }
 
-  /** Whether the group works at `now`: a ticked day that isn't a holiday it takes off. */
+  /** Whether the group works at `now`: not on a holiday it takes off. */
   function activeOn(group, state, now) {
-    const days = Array.isArray(group.days) ? group.days : [0, 1, 2, 3, 4, 5, 6];
-    if (!days.includes(new Date(now).getDay())) return { active: false, off: 'day' };
     if (group.holidaysOff) {
       const holiday = holidayOn(state, now);
       if (holiday) return { active: false, off: 'holiday', holiday };
@@ -240,7 +237,7 @@
       used: null,
       bypassUntil: 0,
       bypassLeft: group.bypass.enabled ? bypassUsesLeft(group, state, now) : 0,
-      off: null, // 'day' | 'holiday' when the group takes today off
+      off: null, // 'holiday' when the group takes today off
       holiday: null,
     };
     if (group.limit.enabled) {
@@ -388,7 +385,6 @@
     const g = st.group;
     if (!g.enabled) return { kind: 'off', text: tr('statusOff') };
     if (st.off === 'holiday') return { kind: 'off', text: tr('statusHoliday', { name: st.holiday.name }) };
-    if (st.off === 'day') return { kind: 'off', text: tr('statusNotToday') };
     if (st.bypassUntil) return { kind: 'break', text: tr('statusBreak', { time: formatClock(st.bypassUntil) }) };
     if (st.reason === 'schedule') {
       return { kind: 'blocked', text: st.until ? tr('statusBlockingUntil', { when: formatWhen(st.until, now) }) : tr('statusBlocking') };

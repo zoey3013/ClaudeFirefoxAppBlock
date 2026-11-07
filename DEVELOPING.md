@@ -24,7 +24,7 @@ npx web-ext run                                                                 
 - the reminder card and the 30-second countdown sit at the top center;
 - when the allowance runs out, the open page gets the lock overlay instead of a redirect, its audio pauses, and a break lifts it with no reload (scroll position and typed text kept);
 - the overlay also works on a page whose security policy forbids frames;
-- a group that's off today (active days or a holiday) doesn't block, the holiday list shows, and Duplicate makes a copy;
+- a group that takes a holiday off doesn't block, the holiday list shows, the holidays switch sits in the Schedule card, and Duplicate makes a copy;
 - switching to Spanish and to dark mode works;
 - no script errors reach Firefox's Browser Console.
 
@@ -75,7 +75,7 @@ Installed copies read `updates.json` (the manifest's `update_url`) and update th
 ```
 manifest.json
 src/i18n.js            English and Spanish translations
-src/core.js            shared logic: model, matching, schedules, limits, active days, puzzles
+src/core.js            shared logic: model, matching, schedules, limits, holidays off, puzzles
 src/holidays.js        public holiday sources by country (add a country here)
 src/background.js      time tracking, blocking (webRequest + tab sweeps), breaks
 src/blocked/           the page shown instead of a blocked site
