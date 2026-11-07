@@ -14,11 +14,11 @@
 
 ## To do
 
-- [ ] **Different settings for different days, picked like a phone alarm.** A group can have more than one set of rules, each for the days you tick (M T W T F S S). For example: Monday to Friday, 30 minutes a day; Saturday and Sunday, 2 hours; or on during the week and off on weekends.
-  - Covers the time allowance, breaks (length and how many) and whether the group is on at all. The schedule already picks its own days.
-  - Optional per group: by default every day uses the same rules, as today.
-  - A day can belong to only one set, so it's always clear which rules apply. Days left unticked use the group's main rules.
-  - The popup, block page and reminders use whichever set applies today. A daily allowance resets at midnight as usual, so each day starts with its own amount.
+- [ ] **Choose the days a group works, like a phone alarm.** Each group gets day buttons (M T W T F S S). On days that aren't ticked, the group is off: it blocks nothing and its time doesn't count.
+  - By default every day is ticked, so existing groups behave as today.
+  - For different rules on different days, use two groups with the same sites. For example: "Weekdays", ticked Monday to Friday with 30 minutes a day, and "Weekend", ticked Saturday and Sunday with 2 hours.
+  - The popup and settings show "Not today" for a group that's off because of the day.
+  - The schedule keeps its own days. Both have to agree for the schedule to block.
 
 - [ ] **Days off on public holidays.** A per-group switch, *Off on holidays*: on a public holiday the group doesn't block at all.
   - Dominican Republic holidays come from the Ministry of Labor's list (`https://webapi.mt.gob.do/api/holidays`), which also covers holidays moved to a Monday.
