@@ -180,14 +180,16 @@ browser.webRequest.onBeforeRequest.addListener(
 
 // ---------- Holidays ----------
 
-const HOLIDAYS_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // download again once a month
-
-/** Checked daily and at startup: download only when there's no copy or it's a month old. */
+/**
+ * Checked daily and at startup. Downloads only when there's no copy for this country, or the
+ * copy is from an earlier year (so once each new year). Changing country or "Update now"
+ * download right away.
+ */
 async function maybeRefreshHolidays() {
   const { settings: raw, state: rawState } = await browser.storage.local.get(['settings', 'state']);
   const country = Anchor.normalizeSettings(raw).country;
   const h = Anchor.normalizeState(rawState).holidays;
-  const stale = !h || h.country !== country || Date.now() - (h.fetchedAt || 0) > HOLIDAYS_MAX_AGE_MS;
+  const stale = !h || h.country !== country || !h.fetchedAt || new Date(h.fetchedAt).getFullYear() < new Date().getFullYear();
   // After a failed download, wait a day before trying again (this runs about daily).
   const justFailed = h && h.country === country && Date.now() - (h.failedAt || 0) < 20 * 60 * 60 * 1000;
   if ((country === 'none' && h) || (Holidays.COUNTRIES[country] && stale && !justFailed)) return refreshHolidays();

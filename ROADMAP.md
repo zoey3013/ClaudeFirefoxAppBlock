@@ -15,7 +15,7 @@
 ## Done in 1.4.0
 
 - [x] **Active days, like a phone alarm.** Each group works only on the days you tick. For different rules on different days, duplicate the group.
-- [x] **Off on public holidays**, with a country picker under *General* (Dominican Republic for now, from the Ministry of Labor's list, refreshed monthly).
+- [x] **Off on public holidays**, with a country picker under *General* (Dominican Republic for now, from the Ministry of Labor's list, downloaded each new year or on demand).
 - [x] **Duplicate group** button.
 
 ## Ideas

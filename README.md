@@ -80,7 +80,7 @@ Under **General** you can choose:
 
 ## Privacy
 
-Everything stays on your computer. Anchor doesn't send your browsing, stats or settings anywhere. It only downloads two things: the list of new versions from this page, to check for updates, and, if you choose a country, that country's public holidays (once a month, from the government's site).
+Everything stays on your computer. Anchor doesn't send your browsing, stats or settings anywhere. It only downloads two things: the list of new versions from this page, to check for updates, and, if you choose a country, that country's public holidays (when you choose it, each new year, or when you press Update now, from the government's site).
 
 ## Good to know
 
