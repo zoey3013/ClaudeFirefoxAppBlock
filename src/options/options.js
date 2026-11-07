@@ -1,4 +1,4 @@
-/* global Anchor, Challenge, Stats, I18n, Theme */
+/* global Anchor, Challenge, Stats, I18n, Theme, Holidays */
 'use strict';
 
 const $ = (id) => document.getElementById(id);
@@ -98,14 +98,22 @@ function card(title, desc, control, ...body) {
 
 function summarize(g) {
   const where = g.mode === 'allow' ? t('whereAllow') : t('nSites', { n: g.sites.length });
-  if (!g.schedule.enabled && !g.limit.enabled) return t('sumAlways', { where });
+  if (!g.schedule.enabled && !g.limit.enabled) return t('sumAlways', { where }) + daysSummary(g);
   const parts = [];
   if (g.schedule.enabled) parts.push(t('sumSchedule', { where }));
   if (g.limit.enabled) {
     const vars = { where, d: Anchor.formatDuration(g.limit.minutes * 60), per: t(g.limit.period === 'day' ? 'unitDay' : 'unitHour') };
     parts.push(t(g.schedule.enabled ? 'sumLimitAfter' : 'sumLimit', vars));
   }
-  return parts.join('; ') + '.';
+  return parts.join('; ') + '.' + daysSummary(g);
+}
+
+const WEEK = [1, 2, 3, 4, 5, 6, 0]; // Monday first, like the schedule
+
+function daysSummary(g) {
+  if (g.days.length === 7) return '';
+  const names = I18n.days();
+  return ' ' + t('sumDays', { days: WEEK.filter((d) => g.days.includes(d)).map((d) => names[d]).join(', ') || '—' });
 }
 
 // ---------- Sidebar ----------
@@ -168,9 +176,52 @@ function renderGeneral() {
     el('h1', {}, t('general')),
     card(t('language'), t('languageDesc'), lang),
     card(t('appearance'), t('appearanceDesc'), theme),
+    holidaysCard(),
     card(t('about'), t('version', { v: browser.runtime.getManifest().version }), null,
       el('p', { class: 'hint' }, t('updatesNote'))),
   );
+}
+
+function holidaysCard() {
+  const country = el('select', { class: 'input', 'aria-label': t('country') },
+    el('option', { value: 'none' }, t('countryNone')),
+    ...Object.keys(Holidays.COUNTRIES).map((code) => el('option', { value: code }, t(`country${code}`))));
+  country.value = settings.country;
+  country.addEventListener('change', async () => {
+    settings.country = country.value;
+    await save(true); // the background downloads the new country's list
+    renderGeneral();
+  });
+  const body = [];
+  if (settings.country !== 'none') {
+    const h = state.holidays && state.holidays.country === settings.country ? state.holidays : null;
+    const year = new Date().getFullYear();
+    const today = Anchor.dayKey();
+    const list = h ? h.days.filter((d) => d.date.startsWith(String(year))) : [];
+    const status = !h ? t('holidaysNotYet')
+      : h.failedAt && !h.fetchedAt ? t('holidaysFailed')
+        : t('holidaysUpdated', { when: new Date(h.fetchedAt).toLocaleDateString(I18n.lang, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })
+          + (h.failedAt > h.fetchedAt ? ' ' + t('holidaysFailed') : '');
+    const refresh = el('button', { class: 'btn small', type: 'button' }, t('holidaysRefresh'));
+    refresh.addEventListener('click', async () => {
+      refresh.disabled = true;
+      await browser.runtime.sendMessage({ type: 'refreshHolidays' });
+      refresh.disabled = false;
+    });
+    body.push(el('div', { class: 'inline', style: 'justify-content:space-between' }, el('span', { class: 'hint' }, status), refresh));
+    if (h) {
+      body.push(el('p', { class: 'muted', style: 'font-weight:500' }, t('holidaysYear', { year })));
+      body.push(list.length
+        ? el('ul', { class: 'holiday-list' }, ...list.map((d) => {
+          const date = new Date(`${d.date}T12:00:00`);
+          return el('li', { class: d.date < today ? 'past' : d.date === today ? 'today' : '' },
+            el('span', { class: 'holiday-date' }, date.toLocaleDateString(I18n.lang, { weekday: 'short', day: 'numeric', month: 'short' })),
+            el('span', {}, d.name));
+        }))
+        : el('p', { class: 'hint' }, t('holidaysNoneThisYear')));
+    }
+  }
+  return card(t('holidays'), t('holidaysDesc'), country, ...body);
 }
 
 // ---------- Editor ----------
@@ -241,11 +292,11 @@ function renderEditor() {
     scheduleCard(g, changed),
     limitCard(g, changed),
     bypassCard(g, changed),
+    daysCard(g, changed),
     remindersCard(g, changed),
     lockCard(g, changed),
-    dangerCard(g),
   );
-  parts.push(fs);
+  parts.push(fs, groupActions(g, editable));
   root.replaceChildren(...parts);
 }
 
@@ -366,6 +417,25 @@ function bypassCard(g, changed) {
     switchEl(bp.enabled, (on) => { bp.enabled = on; changed(true); }, t('allowBreaks')), ...body);
 }
 
+function daysCard(g, changed) {
+  const names = I18n.days();
+  const initials = I18n.dayInitials();
+  const days = el('div', { class: 'days' }, ...WEEK.map((d) => {
+    const b = el('button', { type: 'button', class: 'day', 'aria-pressed': String(g.days.includes(d)), 'aria-label': names[d], title: names[d] }, initials[d]);
+    b.addEventListener('click', () => {
+      g.days = g.days.includes(d) ? g.days.filter((x) => x !== d) : [...g.days, d].sort();
+      b.setAttribute('aria-pressed', String(g.days.includes(d)));
+      changed();
+    });
+    return b;
+  }));
+  const noCountry = settings.country === 'none';
+  const holidays = el('div', { class: 'check-row' },
+    el('div', {}, el('strong', {}, t('holidaysOff')), el('span', { class: 'hint' }, t(noCountry ? 'holidaysNoCountry' : 'holidaysOffHint'))),
+    switchEl(g.holidaysOff, (on) => { g.holidaysOff = on; changed(); }, t('holidaysOff')));
+  return card(t('activeDays'), t('activeDaysDesc'), null, days, holidays);
+}
+
 function remindersCard(g, changed) {
   const r = g.reminders;
   const row = (key, label, hint) => el('div', { class: 'check-row' },
@@ -404,6 +474,26 @@ function lockCard(g, changed) {
   return card(t('lockTitle'), t('lockDesc'), null, control, ...body);
 }
 
+/** Duplicate is always allowed (the copy keeps the same protection); delete needs the group unlocked. */
+function groupActions(g, editable) {
+  const dup = el('button', { class: 'btn', type: 'button' }, t('duplicateGroup'));
+  dup.addEventListener('click', () => {
+    const copy = JSON.parse(JSON.stringify(g));
+    copy.id = Anchor.uid();
+    copy.name = t('copyName', { name: g.name });
+    copy.color = Anchor.GROUP_COLORS[(Anchor.GROUP_COLORS.indexOf(g.color) + 1) % Anchor.GROUP_COLORS.length];
+    settings.groups.splice(settings.groups.indexOf(g) + 1, 0, copy);
+    unlocked.add(copy.id); // a fresh copy is yours to set up
+    save(true);
+    select(copy.id);
+    const name = document.querySelector('.name-input');
+    if (name) { name.focus(); name.select(); }
+  });
+  const del = dangerCard(g);
+  del.disabled = !editable;
+  return el('div', { class: 'danger-zone' }, dup, del);
+}
+
 function dangerCard(g) {
   const del = el('button', { class: 'btn danger', type: 'button' }, t('deleteGroup'));
   del.addEventListener('click', async () => {
@@ -412,7 +502,7 @@ function dangerCard(g) {
     await save(true);
     select(settings.groups[0] ? settings.groups[0].id : 'stats');
   });
-  return el('div', { class: 'danger-zone' }, del);
+  return del;
 }
 
 // ---------- Boot ----------
@@ -427,6 +517,11 @@ $('newGroup').addEventListener('click', () => {
   if (name) { name.focus(); name.select(); }
 });
 $('navStats').addEventListener('click', () => select('stats'));
+// Links to #stats, #general or a group's id work even when the page is already open.
+window.addEventListener('hashchange', () => {
+  const id = location.hash.slice(1);
+  if (id !== selected && (PAGES.includes(id) || groupById(id))) select(id);
+});
 $('navGeneral').addEventListener('click', () => select('general'));
 
 const ALL_SITES = { origins: ['<all_urls>'] };
@@ -459,5 +554,6 @@ $('grant').addEventListener('click', async () => {
     }
     renderNav();
     if (selected === 'stats') Stats.render($('stats'), settings, state);
+    if (selected === 'general' && changes.state) renderGeneral();
   });
 })();

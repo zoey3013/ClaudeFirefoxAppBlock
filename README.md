@@ -38,6 +38,11 @@ Click the Anchor icon in the toolbar to:
 - Give yourself a number of minutes **per day** or **per hour**.
 - The time is shared by every site in the group: 20 minutes on one site leaves 10 for the rest. When it runs out, all of them are blocked until it resets.
 
+**Active days**
+- Pick the days the group works, like a phone alarm. On the other days it blocks nothing and your time there doesn't count.
+- For different rules on different days, duplicate a group (**Duplicate group** at the bottom of its settings) and give each copy its own days, for example 30 minutes on weekdays and 2 hours on weekends.
+- Turn on **Off on public holidays** to let the group rest on your country's holidays.
+
 **Temporary breaks**
 - When a site is blocked, you can take a short break from the block page, for example 5 minutes.
 - You choose how long breaks last and how many you get per day or per hour.
@@ -71,10 +76,11 @@ See your time on the web, how often you opened a blocked site, how many breaks y
 Under **General** you can choose:
 - **Language:** English or Spanish. By default, Anchor uses Firefox's language.
 - **Appearance:** light, dark, or the same as your system.
+- **Public holidays:** your country, so groups can take its holidays off. The Dominican Republic is available for now. Anchor shows this year's holidays, including the ones moved to another day.
 
 ## Privacy
 
-Everything stays on your computer. Anchor doesn't send your browsing, stats or settings anywhere. The only thing it downloads is the list of new versions from this page, to check for updates.
+Everything stays on your computer. Anchor doesn't send your browsing, stats or settings anywhere. It only downloads two things: the list of new versions from this page, to check for updates, and, if you choose a country, that country's public holidays (once a month, from the government's site).
 
 ## Good to know
 

@@ -122,7 +122,7 @@ const server = http.createServer((req, res) => {
     check('stats page renders', (await count('#stats > *')) >= 4);
     await shot('ff-stats');
     await driver.findElement(By.id('navGeneral')).click(); await sleep(300);
-    check('general page renders', (await count('#general .card')) === 3);
+    check('general page renders', (await count('#general .card')) === 4);
 
     // "Test" always blocks 127.0.0.1, no lock, 5-minute breaks.
     await run(async () => {
@@ -210,8 +210,52 @@ const server = http.createServer((req, res) => {
     check('strict page is still blocked (overlay or block page)', strictUrl.startsWith(EXT) || strictOverlay > 0,
       strictUrl.startsWith(EXT) ? 'fell back to the block page' : 'overlay shown');
 
+    // Active days: with today unticked the group rests, so the site opens.
+    await goExt('src/options/options.html');
+    await run(async () => {
+      const { settings } = await browser.storage.local.get('settings');
+      const today = new Date().getDay();
+      settings.groups[0].days = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== today);
+      settings.groups[0].limit.enabled = false; // would block all the time on its days
+      await browser.storage.local.set({ settings });
+    });
+    await goSite('/rest'); await sleep(1200);
+    check('group off today does not block', (await driver.getCurrentUrl()).startsWith(`${SITE}/rest`), await driver.getCurrentUrl());
+
+    // Holidays: country dropdown; with today as a holiday, "Off on holidays" lets the site open.
+    await goExt('src/options/options.html#general');
+    const countries = await driver.findElements(By.css('#general select[aria-label="Country"] option'));
+    check('country dropdown offers Dominican Republic', (await Promise.all(countries.map((o) => o.getText()))).includes('Dominican Republic'));
+    await run(async () => {
+      const { settings, state } = await browser.storage.local.get(['settings', 'state']);
+      settings.country = 'DO';
+      settings.groups[0].days = [0, 1, 2, 3, 4, 5, 6];
+      settings.groups[0].holidaysOff = true;
+      await browser.storage.local.set({ settings });
+      await new Promise((r) => setTimeout(r, 1500)); // the download fails here (no internet): the copy below stays
+      const s = Anchor.normalizeState((await browser.storage.local.get('state')).state);
+      s.holidays = { country: 'DO', fetchedAt: Date.now(), failedAt: 0, days: [{ date: Anchor.dayKey(), name: 'Test holiday' }] };
+      await browser.storage.local.set({ state: s });
+    });
+    await goExt('src/options/options.html#general'); await sleep(500);
+    check('holiday list shows in General', /Test holiday/.test((await text('.holiday-list')) || ''), await text('.holiday-list'));
+    await shot('ff-holidays');
+    await goSite('/holiday'); await sleep(1200);
+    check('group off on a holiday does not block', (await driver.getCurrentUrl()).startsWith(`${SITE}/holiday`), await driver.getCurrentUrl());
+
     await goExt('src/popup/popup.html');
-    check('popup renders groups', (await count('#groups li')) === 2);
+    check('popup says the group is off for the holiday', /Off for Test holiday/.test((await text('#groups')) || ''), (await text('#groups') || '').replace(/\s+/g, ' '));
+
+    // Duplicate.
+    await goExt('src/options/options.html');
+    for (const b of await driver.findElements(By.css('.danger-zone .btn'))) if ((await b.getText()) === 'Duplicate group') { await b.click(); break; }
+    await sleep(600);
+    const afterDup = await Promise.all((await driver.findElements(By.css('#groupNav .nav-item .name'))).map((n) => n.getText()));
+    check('duplicate adds a copy right after the group', afterDup.length === 3 && afterDup[1] === 'Test (copy)', afterDup.join(', '));
+    await shot('ff-days-card');
+
+    await goExt('src/popup/popup.html');
+    check('popup renders groups', (await count('#groups li')) === 3);
 
     await goExt('src/options/options.html#general');
     await driver.findElement(By.css('#general select option[value="es"]')).click(); await sleep(500);

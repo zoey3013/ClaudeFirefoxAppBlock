@@ -28,6 +28,8 @@
       bypass: { enabled: true, minutes: 5, maxUses: 3, period: 'day' },
       lock: { method: 'puzzle', pinHash: null, salt: null }, // 'none' | 'puzzle' | 'pin'
       reminders: { card: true, countdown: true }, // on-page notes shown by the content script
+      days: [0, 1, 2, 3, 4, 5, 6], // days of the week the group works on (0 = Sunday)
+      holidaysOff: false, // take public holidays off (country chosen in settings)
     };
   }
 
@@ -45,7 +47,7 @@
     work.schedule.enabled = true;
     work.limit = { enabled: false, minutes: 15, period: 'hour' };
 
-    return { version: 1, language: 'auto', theme: 'auto', groups: [social, work] };
+    return { version: 1, language: 'auto', theme: 'auto', country: 'none', groups: [social, work] };
   }
 
   /** Fill in fields added in later versions so older saved settings keep working. */
@@ -53,8 +55,11 @@
     const out = s || defaultSettings();
     if (!out.language) out.language = 'auto';
     if (!out.theme) out.theme = 'auto'; // 'auto' | 'light' | 'dark'
+    if (!out.country) out.country = 'none'; // holidays: 'none' or a key of Holidays.COUNTRIES
     for (const g of out.groups || []) {
       if (!g.reminders) g.reminders = { card: true, countdown: true };
+      if (!Array.isArray(g.days)) g.days = [0, 1, 2, 3, 4, 5, 6];
+      if (typeof g.holidaysOff !== 'boolean') g.holidaysOff = false;
     }
     out.groups = out.groups || [];
     return out;
@@ -65,7 +70,8 @@
     // sites:  { 'YYYY-MM-DD': { host: seconds } }
     // blocks: { 'YYYY-MM-DD': { [groupId]: count } }
     // bypass: { [groupId]: { until: ms, uses: [ms...] } }
-    return { usage: {}, sites: {}, blocks: {}, bypass: {} };
+    // holidays: { country, fetchedAt, days: [{ date: 'YYYY-MM-DD', name }] } for the chosen country
+    return { usage: {}, sites: {}, blocks: {}, bypass: {}, holidays: null };
   }
 
   function normalizeState(s) {
@@ -200,6 +206,25 @@
     return Math.max(0, group.bypass.maxUses - used);
   }
 
+  /** Today's public holiday from the downloaded list, if any. */
+  function holidayOn(state, now) {
+    const h = state.holidays;
+    if (!h || !Array.isArray(h.days)) return null;
+    const dk = dayKey(now);
+    return h.days.find((d) => d.date === dk) || null;
+  }
+
+  /** Whether the group works at `now`: a ticked day that isn't a holiday it takes off. */
+  function activeOn(group, state, now) {
+    const days = Array.isArray(group.days) ? group.days : [0, 1, 2, 3, 4, 5, 6];
+    if (!days.includes(new Date(now).getDay())) return { active: false, off: 'day' };
+    if (group.holidaysOff) {
+      const holiday = holidayOn(state, now);
+      if (holiday) return { active: false, off: 'holiday', holiday };
+    }
+    return { active: true };
+  }
+
   /**
    * Status of one group right now.
    * reason: 'schedule' | 'limit' | 'always' | null
@@ -215,12 +240,20 @@
       used: null,
       bypassUntil: 0,
       bypassLeft: group.bypass.enabled ? bypassUsesLeft(group, state, now) : 0,
+      off: null, // 'day' | 'holiday' when the group takes today off
+      holiday: null,
     };
     if (group.limit.enabled) {
       out.used = usedSeconds(state, group.id, group.limit.period, now);
       out.remaining = Math.max(0, group.limit.minutes * 60 - out.used);
     }
     if (!group.enabled) return out;
+    const today = activeOn(group, state, now);
+    if (!today.active) {
+      out.off = today.off;
+      out.holiday = today.holiday || null;
+      return out;
+    }
 
     if (scheduleActive(group.schedule, now)) {
       out.reason = 'schedule';
@@ -252,7 +285,8 @@
   function recordUsage(settings, state, url, start, end) {
     if (end <= start || !isTrackable(url)) return;
     const host = hostOf(url);
-    const groups = settings.groups.filter((g) => groupMatches(g, url));
+    // Time on a group's day off doesn't count toward its allowance.
+    const groups = settings.groups.filter((g) => groupMatches(g, url) && activeOn(g, state, start).active);
     let t = start;
     while (t < end) {
       const boundary = Math.min(end, periodEnd('hour', t));
@@ -353,6 +387,8 @@
   function describeStatus(st, now = Date.now()) {
     const g = st.group;
     if (!g.enabled) return { kind: 'off', text: tr('statusOff') };
+    if (st.off === 'holiday') return { kind: 'off', text: tr('statusHoliday', { name: st.holiday.name }) };
+    if (st.off === 'day') return { kind: 'off', text: tr('statusNotToday') };
     if (st.bypassUntil) return { kind: 'break', text: tr('statusBreak', { time: formatClock(st.bypassUntil) }) };
     if (st.reason === 'schedule') {
       return { kind: 'blocked', text: st.until ? tr('statusBlockingUntil', { when: formatWhen(st.until, now) }) : tr('statusBlocking') };
@@ -375,6 +411,7 @@
 
   const api = {
     GROUP_COLORS, DAY_LABELS,
+    holidayOn, activeOn,
     uid, newGroup, defaultSettings, normalizeSettings, emptyState, normalizeState,
     parseSite, isTrackable, hostOf, siteMatches, groupMatches,
     dayKey, hourKey, periodStart, periodEnd, usedSeconds,

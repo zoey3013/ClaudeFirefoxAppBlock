@@ -1,4 +1,4 @@
-/* global Anchor, I18n */
+/* global Anchor, I18n, Holidays */
 'use strict';
 
 /*
@@ -8,6 +8,7 @@
  *   the lock overlay instead (so a break doesn't reload them), or a redirect where it can't run.
  * - Handles temporary bypasses requested from the UI.
  * - Answers on-page reminder status requests from the content script.
+ * - Downloads public holidays for the chosen country and keeps a copy in state.
  *
  * Settings are written by the UI pages; the background only writes `state`.
  */
@@ -177,6 +178,55 @@ browser.webRequest.onBeforeRequest.addListener(
   ['blocking'],
 );
 
+// ---------- Holidays ----------
+
+const HOLIDAYS_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // download again once a month
+
+/** Checked daily and at startup: download only when there's no copy or it's a month old. */
+async function maybeRefreshHolidays() {
+  const { settings: raw, state: rawState } = await browser.storage.local.get(['settings', 'state']);
+  const country = Anchor.normalizeSettings(raw).country;
+  const h = Anchor.normalizeState(rawState).holidays;
+  const stale = !h || h.country !== country || Date.now() - (h.fetchedAt || 0) > HOLIDAYS_MAX_AGE_MS;
+  // After a failed download, wait a day before trying again (this runs about daily).
+  const justFailed = h && h.country === country && Date.now() - (h.failedAt || 0) < 20 * 60 * 60 * 1000;
+  if ((country === 'none' && h) || (Holidays.COUNTRIES[country] && stale && !justFailed)) return refreshHolidays();
+  return { ok: true };
+}
+
+/** Download the chosen country's holidays. On failure, keep the copy we have. */
+async function refreshHolidays() {
+  const { settings: raw } = await browser.storage.local.get('settings');
+  const country = Anchor.normalizeSettings(raw).country;
+  const source = Holidays.COUNTRIES[country];
+  let days = null;
+  if (source) {
+    try {
+      const res = await fetch(source.url, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      days = Holidays.parse(country, await res.json());
+      if (!days.length) throw new Error('empty list');
+    } catch (e) {
+      console.warn('[anchor] holidays:', e.message);
+      days = null;
+    }
+  }
+  return serial(async () => {
+    const { state } = await load();
+    const now = Date.now();
+    if (!source) state.holidays = null;
+    else if (days) {
+      const since = `${new Date(now).getFullYear() - 1}-01-01`;
+      state.holidays = { country, fetchedAt: now, failedAt: 0, days: days.filter((d) => d.date >= since) };
+    } else {
+      const keep = state.holidays && state.holidays.country === country ? state.holidays : { country, fetchedAt: 0, days: [] };
+      state.holidays = { ...keep, failedAt: now };
+    }
+    await saveState(state);
+    return { ok: !source || !!days };
+  }).then((r) => (tick(), r));
+}
+
 // ---------- Messages from UI ----------
 
 async function handleBypass(groupId) {
@@ -204,6 +254,12 @@ async function handleEndBypass(groupId) {
   });
 }
 
+/** Next time the schedule starts blocking, if the group works then (not a day off). */
+function scheduleStartWhileActive(group, state, now) {
+  const at = Anchor.nextScheduleChange(group.schedule, now);
+  return at && Anchor.activeOn(group, state, at).active ? at : null;
+}
+
 /** What the on-page reminder needs to know about the page it runs on. */
 async function pageStatus(url) {
   const now = Date.now();
@@ -225,7 +281,7 @@ async function pageStatus(url) {
       remaining: m.remaining === null ? null : Math.max(0, m.remaining - Math.max(0, pending)),
       bypassUntil: m.bypassUntil,
       blockedAfterBreak: !!m.reason,
-      scheduleStart: m.reason ? null : Anchor.nextScheduleChange(m.group.schedule, now),
+      scheduleStart: m.reason ? null : scheduleStartWhileActive(m.group, state, now),
     })),
   };
 }
@@ -246,6 +302,8 @@ browser.runtime.onMessage.addListener((msg, sender) => {
       return handleEndBypass(msg.groupId).then((r) => (tick(), r));
     case 'tick':
       return tick().then(() => ({ ok: true }));
+    case 'refreshHolidays':
+      return refreshHolidays();
     default:
       return undefined;
   }
@@ -273,17 +331,23 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 browser.windows.onFocusChanged.addListener(() => tick());
-browser.alarms.onAlarm.addListener(() => tick());
+browser.alarms.onAlarm.addListener((alarm) => (alarm.name === 'holidays' ? maybeRefreshHolidays() : tick()));
 
 browser.idle.setDetectionInterval(IDLE_SECONDS);
 browser.idle.onStateChanged.addListener(() => tick());
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.settings) tick();
+  if (area !== 'local' || !changes.settings) return;
+  const before = changes.settings.oldValue && changes.settings.oldValue.country;
+  const after = changes.settings.newValue && changes.settings.newValue.country;
+  if (before !== after) refreshHolidays();
+  else tick();
 });
 
 function setup() {
   browser.alarms.create('tick', { periodInMinutes: 1 });
+  browser.alarms.create('holidays', { periodInMinutes: 24 * 60 });
+  maybeRefreshHolidays();
   tick();
 }
 

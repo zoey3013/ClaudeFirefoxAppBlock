@@ -141,3 +141,11 @@ code { font-size: 12px; background: var(--surface); padding: 1px 4px; border-rad
 .check-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .check-row + .check-row { padding-top: 14px; border-top: 1px solid var(--border); }
 .check-row strong { display: block; font-weight: 500; }
+
+.danger-zone { gap: 8px; }
+.holiday-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.holiday-list li { display: grid; grid-template-columns: 120px 1fr; gap: 12px; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 13px; }
+.holiday-list li.past { color: var(--text-3); }
+.holiday-list li.today { background: var(--accent-soft); }
+.holiday-date { font-variant-numeric: tabular-nums; color: var(--text-2); }
+.holiday-list li.past .holiday-date { color: var(--text-3); }

@@ -1,0 +1,36 @@
+[
+  {
+    "items": [
+      { "current": "2026-01-01T04:00:00Z", "events": [
+        { "date": "2026-01-01T04:00:00Z", "title": "Día de año nuevo", "description": "", "action": "No se cambia", "moved": false, "movedTo": null },
+        { "date": "2026-01-06T04:00:00Z", "title": "Día de los Santos Reyes", "description": "", "action": "Se trabaja", "moved": true, "movedTo": "2026-01-05T04:00:00Z" },
+        { "date": "2026-01-21T04:00:00Z", "title": "Día de la Altagracia", "description": "", "action": "No se cambia", "moved": false, "movedTo": null },
+        { "date": "2026-01-26T04:00:00Z", "title": "Día de Duarte", "description": "", "action": "No se cambia", "moved": false, "movedTo": null }
+      ] },
+      { "current": "2026-02-01T04:00:00Z", "events": [
+        { "date": "2026-02-27T04:00:00Z", "title": "Día de la Independencia", "description": "", "action": "No se cambia", "moved": false, "movedTo": null }
+      ] },
+      { "current": "2026-04-01T04:00:00Z", "events": [
+        { "date": "2026-04-03T04:00:00Z", "title": "Viernes Santo", "description": "", "action": "No se cambia", "moved": false, "movedTo": null }
+      ] },
+      { "current": "2026-05-01T04:00:00Z", "events": [
+        { "date": "2026-05-01T04:00:00Z", "title": "Día del Trabajo", "description": "", "action": "Se trabaja", "moved": true, "movedTo": "2026-05-04T04:00:00Z" }
+      ] },
+      { "current": "2026-06-01T04:00:00Z", "events": [
+        { "date": "2026-06-04T04:00:00Z", "title": "Corpus Cristi", "description": "", "action": "No se cambia", "moved": false, "movedTo": null }
+      ] },
+      { "current": "2026-08-01T04:00:00Z", "events": [
+        { "date": "2026-08-16T04:00:00Z", "title": "Día de la Restauración", "description": "", "action": "No se cambia", "moved": false, "movedTo": null }
+      ] },
+      { "current": "2026-09-01T04:00:00Z", "events": [
+        { "date": "2026-09-24T04:00:00Z", "title": "Día de las Mercedes", "description": "", "action": "No se cambia", "moved": false, "movedTo": null }
+      ] },
+      { "current": "2026-11-01T04:00:00Z", "events": [
+        { "date": "2026-11-06T04:00:00Z", "title": "Día de la Constitución", "description": "", "action": "Se trabaja", "moved": true, "movedTo": "2026-11-09T04:00:00Z" }
+      ] },
+      { "current": "2026-12-01T04:00:00Z", "events": [
+        { "date": "2026-12-25T04:00:00Z", "title": "Día de Navidad", "description": "", "action": "No se cambia", "moved": false, "movedTo": null }
+      ] }
+    ]
+  }
+]

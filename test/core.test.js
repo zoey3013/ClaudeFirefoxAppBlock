@@ -156,3 +156,71 @@ test('UI files never shadow the translation function t', () => {
   }
   assert.deepEqual(offenders, []);
 });
+
+test('Dominican holidays: parsed with moved days on their new date', () => {
+  const H = require('../src/holidays.js');
+  const days = H.parse('DO', require('./fixtures/holidays-do-2026.json'));
+  assert.equal(days.length, 12);
+  const on = (date) => days.find((d) => d.date === date);
+  assert.equal(on('2026-01-05').name, 'Día de los Santos Reyes'); // moved from Jan 6
+  assert.equal(on('2026-01-06'), undefined);
+  assert.equal(on('2026-05-04').name, 'Día del Trabajo'); // moved from May 1
+  assert.equal(on('2026-11-09').name, 'Día de la Constitución'); // moved from Nov 6
+  assert.equal(on('2026-12-25').name, 'Día de Navidad');
+  assert.deepEqual(H.parse('DO', { nonsense: true }), []);
+  assert.deepEqual(H.parse('XX', []), []);
+});
+
+test('active days: a group blocks nothing on days it is off', () => {
+  const settings = { groups: [A.newGroup('Weekdays')] };
+  const g = settings.groups[0];
+  g.sites = ['a.com'];
+  g.limit.enabled = false; // always blocking when active
+  g.days = [1, 2, 3, 4, 5];
+  const state = A.emptyState();
+  const saturday = at('2026-11-07T12:00'), monday = at('2026-11-09T12:00');
+  const sat = A.evaluateUrl('https://a.com', settings, state, saturday);
+  assert.equal(sat.blocker, null);
+  assert.equal(sat.matches[0].off, 'day');
+  require('../src/i18n.js').setLanguage('en');
+  assert.equal(A.describeStatus(sat.matches[0], saturday).text, 'Not today');
+  assert.equal(A.evaluateUrl('https://a.com', settings, state, monday).blocker.reason, 'always');
+});
+
+test('holidays off: the group rests on a holiday only if switched on', () => {
+  const settings = { groups: [A.newGroup('Work')] };
+  const g = settings.groups[0];
+  g.sites = ['a.com'];
+  g.limit.enabled = false;
+  const state = A.emptyState();
+  state.holidays = { country: 'DO', fetchedAt: 1, days: [{ date: '2026-11-09', name: 'Día de la Constitución' }] };
+  const holiday = at('2026-11-09T10:00');
+  assert.equal(A.evaluateUrl('https://a.com', settings, state, holiday).blocker.reason, 'always');
+  g.holidaysOff = true;
+  const r = A.evaluateUrl('https://a.com', settings, state, holiday);
+  assert.equal(r.blocker, null);
+  assert.equal(r.matches[0].off, 'holiday');
+  assert.equal(r.matches[0].holiday.name, 'Día de la Constitución');
+});
+
+test('time on a day off does not count toward the allowance', () => {
+  const settings = { groups: [A.newGroup('Weekdays')] };
+  const g = settings.groups[0];
+  g.sites = ['a.com'];
+  g.days = [1, 2, 3, 4, 5];
+  const state = A.emptyState();
+  A.recordUsage(settings, state, 'https://a.com', at('2026-11-07T10:00'), at('2026-11-07T10:10')); // Saturday
+  assert.equal(A.usedSeconds(state, g.id, 'day', at('2026-11-07T11:00')), 0);
+  assert.equal(state.sites['2026-11-07']['a.com'], 600); // still in stats
+  A.recordUsage(settings, state, 'https://a.com', at('2026-11-09T10:00'), at('2026-11-09T10:10')); // Monday
+  assert.equal(A.usedSeconds(state, g.id, 'day', at('2026-11-09T11:00')), 600);
+});
+
+test('older settings gain active days, holidays switch and country', () => {
+  const g = A.newGroup('Old');
+  delete g.days; delete g.holidaysOff;
+  const s = A.normalizeSettings({ version: 1, groups: [g] });
+  assert.deepEqual(s.groups[0].days, [0, 1, 2, 3, 4, 5, 6]);
+  assert.equal(s.groups[0].holidaysOff, false);
+  assert.equal(s.country, 'none');
+});
