@@ -21,6 +21,11 @@
           "version": "1.4.0",
           "update_link": "https://github.com/zoey3013/ClaudeFirefoxAppBlock/releases/download/v1.4.0/anchor-1.4.0.xpi",
           "update_hash": "sha256:eabb693ae39c529059cdc40d938a8257623f17aeb74e0efd91cf78b0f61d0614"
+        },
+        {
+          "version": "1.4.1",
+          "update_link": "https://github.com/zoey3013/ClaudeFirefoxAppBlock/releases/download/v1.4.1/anchor-1.4.1.xpi",
+          "update_hash": "sha256:db443229ef2813cc883318dff87521cb24364d9d914b4161d15dd9a9de82d6b2"
         }
       ]
     }
