@@ -33,7 +33,7 @@ Click the Anchor icon in the toolbar to:
 **Schedule**
 - Block the sites completely during set hours on the days you choose, for example Monday to Friday, 9:00 to 17:00.
 - You can add several time ranges, and a range can run overnight.
-- **Off on public holidays:** on your country's holidays the group blocks nothing and your time there doesn't count. Choose the country under **General**.
+- **Off on public holidays** (shown once the schedule is on): on your country's holidays the group takes the day off. It blocks nothing and your time there doesn't count. Choose the country under **General**.
 
 **Time allowance**
 - Give yourself a number of minutes **per day** or **per hour**.

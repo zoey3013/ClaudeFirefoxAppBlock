@@ -181,6 +181,8 @@ test('holidays off: the group rests on a holiday only if switched on', () => {
   const holiday = at('2026-11-09T10:00');
   assert.equal(A.evaluateUrl('https://a.com', settings, state, holiday).blocker.reason, 'always');
   g.holidaysOff = true;
+  assert.equal(A.evaluateUrl('https://a.com', settings, state, holiday).blocker.reason, 'always'); // only with a schedule
+  g.schedule = { enabled: true, rules: [{ days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }] };
   const r = A.evaluateUrl('https://a.com', settings, state, holiday);
   assert.equal(r.blocker, null);
   assert.equal(r.matches[0].off, 'holiday');
@@ -192,6 +194,7 @@ test('time on a holiday off does not count toward the allowance', () => {
   const g = settings.groups[0];
   g.sites = ['a.com'];
   g.holidaysOff = true;
+  g.schedule.enabled = true;
   const state = A.emptyState();
   state.holidays = { country: 'DO', fetchedAt: 1, days: [{ date: '2026-11-09', name: 'Día de la Constitución' }] };
   A.recordUsage(settings, state, 'https://a.com', at('2026-11-09T10:00'), at('2026-11-09T10:10'));

@@ -365,16 +365,15 @@ function scheduleCard(g, changed) {
   const addRule = el('button', { type: 'button', class: 'btn small' }, t('addRange'));
   addRule.addEventListener('click', () => { sch.rules.push({ days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' }); changed(true); });
 
-  const body = sch.enabled
-    ? [rules, el('div', {}, addRule), el('p', { class: 'hint' }, t('scheduleHint'))]
-    : [];
-  // Shown even without a schedule: a holiday off also pauses the time allowance.
   const noCountry = settings.country === 'none';
   const holidays = el('div', { class: 'check-row holidays-row' },
     el('div', {}, el('strong', {}, t('holidaysOff')), el('span', { class: 'hint' }, t(noCountry ? 'holidaysNoCountry' : 'holidaysOffHint'))),
     switchEl(g.holidaysOff, (on) => { g.holidaysOff = on; changed(); }, t('holidaysOff')));
+  const body = sch.enabled
+    ? [rules, el('div', {}, addRule), el('p', { class: 'hint' }, t('scheduleHint')), holidays]
+    : [];
   return card(t('schedule'), t('scheduleDesc'),
-    switchEl(sch.enabled, (on) => { sch.enabled = on; changed(true); }, t('useSchedule')), ...body, holidays);
+    switchEl(sch.enabled, (on) => { sch.enabled = on; changed(true); }, t('useSchedule')), ...body);
 }
 
 function limitCard(g, changed) {

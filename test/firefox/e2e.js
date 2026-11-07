@@ -217,7 +217,9 @@ const server = http.createServer((req, res) => {
     await run(async () => {
       const { settings, state } = await browser.storage.local.get(['settings', 'state']);
       settings.country = 'DO';
-      settings.groups[0].limit.enabled = false; // blocks all the time, except on a holiday off
+      settings.groups[0].limit.enabled = false;
+      // Scheduled all day, every day: blocks, except on a holiday off.
+      settings.groups[0].schedule = { enabled: true, rules: [{ days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }] };
       settings.groups[0].holidaysOff = true;
       await browser.storage.local.set({ settings });
       await new Promise((r) => setTimeout(r, 1500)); // the download fails here (no internet): the copy below stays

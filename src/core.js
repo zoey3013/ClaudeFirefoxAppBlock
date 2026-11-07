@@ -213,9 +213,9 @@
     return h.days.find((d) => d.date === dk) || null;
   }
 
-  /** Whether the group works at `now`: not on a holiday it takes off. */
+  /** Whether the group works at `now`: not on a holiday it takes off (a schedule option). */
   function activeOn(group, state, now) {
-    if (group.holidaysOff) {
+    if (group.holidaysOff && group.schedule && group.schedule.enabled) {
       const holiday = holidayOn(state, now);
       if (holiday) return { active: false, off: 'holiday', holiday };
     }
