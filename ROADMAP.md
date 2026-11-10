@@ -17,6 +17,13 @@
 - [x] **Off on public holidays**, with a country picker under *General* (Dominican Republic for now, from the Ministry of Labor's list, downloaded each new year or on demand).
 - [x] **Duplicate group** button.
 
+## To do
+
+- [ ] **Fix: a group that's off for a holiday still shows its time left.** The on-page reminder ("…left today, the clock is running"), the 30-second countdown and the minutes on the toolbar icon still appear on a holiday off, even though the group isn't blocking or counting time.
+  - Cause: the background still reports the group's remaining time on its day off. The badge and the reminders check that the group is switched on, but not that it's off today.
+  - Fix: leave groups that are off today out of the badge, the reminder card and the countdown. The popup and settings keep showing "Off for {holiday}".
+  - Add a Firefox test: on a holiday off, no reminder, no countdown, empty badge.
+
 ## Ideas
 
 - Holidays for more countries
