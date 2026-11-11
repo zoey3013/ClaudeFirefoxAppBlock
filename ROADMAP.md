@@ -24,6 +24,20 @@
   - Fix: leave groups that are off today out of the badge, the reminder card and the countdown. The popup and settings keep showing "Off for {holiday}".
   - Add a Firefox test: on a holiday off, no reminder, no countdown, empty badge.
 
+- [ ] **Alert mode.** A new choice per group, next to how it blocks: **Block** (as today) or **Alert**. In Alert mode the group never blocks on its own. Instead it asks.
+  - **When it asks:**
+    - after a set number of minutes in a row on the group's sites (its own setting, for example every 20 minutes);
+    - when the time allowance runs out, if the group has one;
+    - as soon as you open one of its sites during scheduled hours.
+  - **The screen:** the same lock-screen overlay (covers the page, pauses video), with the group's color as the accent. It reads "You've been here for X minutes. Do you want to stay?", where X is this visit, with today's total in smaller text underneath.
+  - **Three buttons, no math or PIN:**
+    - **Dismiss:** leave me alone for the rest of this visit. A visit ends when you leave the group's sites or close the tab.
+    - **Remind me in [5 / 10 / 15 / 30 / 60] minutes:** close the screen and ask again after that time.
+    - **Lock for [5 / 10 / 15 / 30 / 60] minutes:** a real lock on all the group's sites, using the normal lock screen. No early way out (no break, PIN or puzzle) until the time is up.
+  - "Remind me" and "Lock for" each have their own dropdown.
+  - Stats count how often the alert appeared and what you chose.
+  - Translated to Spanish; covered by the Firefox test.
+
 ## Ideas
 
 - Holidays for more countries
