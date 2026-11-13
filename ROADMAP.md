@@ -24,6 +24,10 @@
   - Fix: leave groups that are off today out of the badge, the reminder card and the countdown. The popup and settings keep showing "Off for {holiday}".
   - Add a Firefox test: on a holiday off, no reminder, no countdown, empty badge.
 
+- [ ] **Fix: the lock screen doesn't pause videos on Reddit.** Reddit's player lives inside a shadow DOM (a sealed-off part of the page), and the lock screen only looks for videos in the normal page, so it never finds them.
+  - Fix: also search inside shadow DOMs, including closed ones (Firefox lets add-ons reach those), and in same-site frames. Keep re-pausing any video that tries to play while locked, including from inside a shadow DOM.
+  - Add a Firefox test with a video inside a shadow DOM, like Reddit's.
+
 - [ ] **Mode card: Block, Time allowance or Alert.** Each group picks one mode in a new *Mode* card, which shows that mode's options.
   - **Block:** the group's sites are blocked.
   - **Time allowance:** X minutes per day or per hour, shared by the group's sites, then blocked until it resets.
