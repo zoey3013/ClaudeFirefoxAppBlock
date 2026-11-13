@@ -24,16 +24,25 @@
   - Fix: leave groups that are off today out of the badge, the reminder card and the countdown. The popup and settings keep showing "Off for {holiday}".
   - Add a Firefox test: on a holiday off, no reminder, no countdown, empty badge.
 
-- [ ] **Alert mode.** A new choice per group, next to how it blocks: **Block** (as today) or **Alert**. In Alert mode the group never blocks on its own. Instead it asks.
-  - **When it asks:**
-    - after a set number of minutes in a row on the group's sites (its own setting, for example every 20 minutes);
-    - when the time allowance runs out, if the group has one;
-    - as soon as you open one of its sites during scheduled hours.
-  - **The screen:** the same lock-screen overlay (covers the page, pauses video), with the group's color as the accent. It reads "You've been here for X minutes. Do you want to stay?", where X is this visit, with today's total in smaller text underneath.
+- [ ] **Mode card: Block, Time allowance or Alert.** Each group picks one mode in a new *Mode* card, which shows that mode's options.
+  - **Block:** the group's sites are blocked.
+  - **Time allowance:** X minutes per day or per hour, shared by the group's sites, then blocked until it resets.
+  - **Alert:** never blocks on its own. After X minutes in a row on the group's sites (its own setting), it asks. Details below.
+  - **Breaks** and **Unlock protection** stay separate cards, not tied to a mode. They apply whenever the group blocks, in Block or Time allowance mode. A lock chosen from an alert has no early way out.
+  - **Existing groups:** a group with an allowance becomes *Time allowance*; one with only a schedule becomes *Block*. A group that had both keeps the allowance, and the schedule now means its active hours (see below), so check those groups by hand.
+
+- [ ] **The schedule works with every mode.** The schedule now sets *when the group is active*, whatever its mode.
+  - Inside the schedule's hours, the mode applies: Block blocks, the allowance counts down, Alert asks.
+  - Outside them, the group rests: it doesn't block, ask or count time.
+  - With the schedule off, the mode applies all day, every day.
+  - Only time inside the active hours counts toward the allowance. It still resets daily or hourly.
+  - *Off on public holidays* stays in the Schedule card.
+
+- [ ] **Alert screen.** The same lock-screen overlay (covers the page, pauses video), with the group's color as the accent. It reads "You've been here for X minutes. Do you want to stay?", where X is this visit, with today's total in smaller text underneath.
   - **Three buttons, no math or PIN:**
     - **Dismiss:** leave me alone for the rest of this visit. A visit ends when you leave the group's sites or close the tab.
     - **Remind me in [5 / 10 / 15 / 30 / 60] minutes:** close the screen and ask again after that time.
-    - **Lock for [5 / 10 / 15 / 30 / 60] minutes:** a real lock on all the group's sites, using the normal lock screen. No early way out (no break, PIN or puzzle) until the time is up.
+    - **Lock for [5 / 10 / 15 / 30 / 60] minutes:** a real lock on all the group's sites, using the normal lock screen, with no early way out until the time is up.
   - "Remind me" and "Lock for" each have their own dropdown.
   - Stats count how often the alert appeared and what you chose.
   - Translated to Spanish; covered by the Firefox test.
