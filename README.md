@@ -30,17 +30,22 @@ Click the Anchor icon in the toolbar to:
 - `reddit.com` also covers its subdomains, like `old.reddit.com`.
 - `youtube.com/shorts` blocks only that part of the site.
 
-**Schedule**
-- Block the sites completely during set hours on the days you choose, for example Monday to Friday, 9:00 to 17:00.
-- You can add several time ranges, and a range can run overnight.
-- **Off on public holidays** (shown once the schedule is on): on your country's holidays the group takes the day off. It blocks nothing and your time there doesn't count. Choose the country under **General**.
+**Mode:** what the group does while it's active. Pick one:
+- **Block:** the sites are blocked.
+- **Time allowance:** a number of minutes **per day** or **per hour**, shared by every site in the group. 20 minutes on one site leaves 10 for the rest. When it runs out, all of them are blocked until it resets.
+- **Alert:** nothing is blocked. After the minutes in a row you choose, for example 20, Anchor asks "You've been here for 20m. Do you want to stay?" in the group's color, with three answers:
+  - **Dismiss:** leaves you alone for the rest of this visit. A visit ends when you leave the group's sites or close the tab.
+  - **Remind me in** 5, 10, 15, 30 or 60 minutes.
+  - **Lock for** 5, 10, 15, 30 or 60 minutes: all the group's sites lock, with no break or early way out.
 
-**Time allowance**
-- Give yourself a number of minutes **per day** or **per hour**.
-- The time is shared by every site in the group: 20 minutes on one site leaves 10 for the rest. When it runs out, all of them are blocked until it resets.
+**Schedule:** when the group is active.
+- Choose hours on the days you pick, for example Monday to Friday, 9:00 to 17:00. You can add several time ranges, and a range can run overnight.
+- Inside those hours the mode applies. Outside them the group rests: its sites are open and your time there doesn't count.
+- With the schedule off, the group is active all the time.
+- **Off on public holidays** (shown once the schedule is on): on your country's holidays the group takes the day off. Choose the country under **General**.
 
 **Temporary breaks**
-- When a site is blocked, you can take a short break from the block page, for example 5 minutes.
+- When a site is blocked (Block or Time allowance mode), you can take a short break from the block page, for example 5 minutes.
 - You choose how long breaks last and how many you get per day or per hour.
 
 **Unlock protection**
@@ -53,11 +58,9 @@ Click the Anchor icon in the toolbar to:
 
 ## How blocking works
 
-- If a group is **off**, it blocks nothing.
-- During **scheduled hours**, its sites are blocked.
-- Outside those hours, its sites stay open until the **time allowance** runs out.
-- If a group has neither a schedule nor a time allowance, its sites are **always** blocked.
-- During a **break**, the group doesn't block.
+- If a group is **off**, or **resting** (outside its schedule, or on a holiday off), it does nothing.
+- Otherwise its mode applies: **Block** blocks, **Time allowance** blocks once the minutes run out, and **Alert** only asks.
+- During a **break**, the group doesn't block. A lock chosen on an alert can't be broken.
 
 If a site gets blocked while you have it open, Anchor covers it with the lock screen instead of closing the page. Videos and audio pause. When you take a break, the lock screen disappears and you're right where you left off: same scroll position, same video, anything you typed still there.
 
@@ -65,7 +68,7 @@ Your time only counts while one of the group's sites is the tab you're looking a
 
 ## Stats
 
-See your time on the web, how often you opened a blocked site, how many breaks you took, your last 7 days and your most visited sites. Open them from the toolbar icon or the settings page.
+See your time on the web, how often you opened a blocked site, how many breaks you took, how often an Alert group asked and what you answered, your last 7 days and your most visited sites. Open them from the toolbar icon or the settings page.
 
 ## Settings
 

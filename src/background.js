@@ -7,6 +7,8 @@
  * - Redirects blocked navigations to the block page. Pages already open when a block starts get
  *   the lock overlay instead (so a break doesn't reload them), or a redirect where it can't run.
  * - Handles temporary bypasses requested from the UI.
+ * - Alert mode: counts each tab's time in a row on a group's sites (a "visit") and, when it's
+ *   due, shows the alert screen; handles the answer (dismiss, remind me, lock for).
  * - Answers on-page reminder status requests from the content script.
  * - Downloads public holidays for the chosen country and keeps a copy in state.
  *
@@ -44,20 +46,102 @@ async function focusedActiveTab() {
 }
 
 /** Credit time since the last tick, then start a new slice on whatever is active now. */
-async function flush(settings, state, now) {
+async function flush(settings, state, now, visits) {
   const { active } = await browser.storage.session.get('active');
   let changed = false;
   // Time on a page that's already blocked (behind the lock overlay) doesn't count.
   if (active && now > active.start && !Anchor.evaluateUrl(active.url, settings, state, now).blocker) {
     const start = Math.max(active.start, now - MAX_SLICE_MS);
     Anchor.recordUsage(settings, state, active.url, start, now);
+    if (active.tabId != null) creditVisits(settings, state, visits, active, start, now);
     changed = true;
   }
   // Ask every time: idle events can be missed while this event page is suspended.
   const idle = (await browser.idle.queryState(IDLE_SECONDS)) !== 'active';
   const tab = idle ? null : await focusedActiveTab();
-  await browser.storage.session.set({ active: tab ? { url: tab.url, start: now } : null });
+  await browser.storage.session.set({ active: tab ? { url: tab.url, tabId: tab.id, start: now } : null });
   return { changed, tab };
+}
+
+// ---------- Alert mode ----------
+
+/** Alert groups that are active for this URL right now (not resting, not locked). */
+function alertGroupsFor(url, settings, state, now) {
+  return Anchor.evaluateUrl(url, settings, state, now).matches
+    .filter((m) => m.enabled && m.behavior === 'alert' && !m.off && !m.reason)
+    .map((m) => m.group);
+}
+
+/** Add a used slice to this tab's visits. visits: { [tabId]: { [groupId]: { secs, askAt, dismissed, asking } } } */
+function creditVisits(settings, state, visits, active, start, now) {
+  const secs = (now - start) / 1000;
+  for (const g of alertGroupsFor(active.url, settings, state, start)) {
+    const tabVisits = (visits[active.tabId] = visits[active.tabId] || {});
+    const v = (tabVisits[g.id] = tabVisits[g.id] || { secs: 0, askAt: g.alert.every * 60, dismissed: false, asking: false });
+    v.secs += secs;
+  }
+}
+
+/** A visit ends when the tab leaves the group's sites, the tab closes, or the group stops alerting. */
+function pruneVisits(settings, visits, tabs) {
+  const urls = new Map(tabs.map((t) => [String(t.id), t.url]));
+  for (const tabId of Object.keys(visits)) {
+    const url = urls.get(tabId);
+    for (const gid of Object.keys(visits[tabId])) {
+      const g = settings.groups.find((x) => x.id === gid);
+      if (!url || !g || !g.enabled || g.behavior !== 'alert' || !Anchor.groupMatches(g, url)) delete visits[tabId][gid];
+    }
+    if (!Object.keys(visits[tabId]).length) delete visits[tabId];
+  }
+}
+
+function countAlert(state, groupId, what, now) {
+  const dk = Anchor.dayKey(now);
+  const day = (state.alerts[dk] = state.alerts[dk] || {});
+  const g = (day[groupId] = day[groupId] || { shown: 0, dismiss: 0, remind: 0, lock: 0 });
+  g[what] = (g[what] || 0) + 1;
+}
+
+/** Show the alert on the tab you're using once a visit reaches its time. */
+function maybeAsk(settings, state, now, tab, visits, locked) {
+  if (!tab || locked[tab.id]) return false;
+  const active = new Set(alertGroupsFor(tab.url, settings, state, now).map((g) => g.id));
+  for (const [gid, v] of Object.entries(visits[tab.id] || {})) {
+    // (Not v.asking: that's only true while this tab shows the alert, and then locked[] is set.)
+    if (!active.has(gid) || v.dismissed || v.secs < v.askAt) continue;
+    v.asking = true;
+    locked[tab.id] = { g: gid, kind: 'alert' };
+    countAlert(state, gid, 'shown', now);
+    lockTab(tab, gid, 'alert', { m: Math.max(1, Math.round(v.secs / 60)) });
+    return true;
+  }
+  return false;
+}
+
+/** The answer on the alert screen. */
+function answerAlert(tabId, groupId, choice, minutes) {
+  return serial(async () => {
+    const now = Date.now();
+    const { settings, state } = await load();
+    const { visits = {}, locked = {} } = await browser.storage.session.get(['visits', 'locked']);
+    const group = settings.groups.find((g) => g.id === groupId);
+    const v = visits[tabId] && visits[tabId][groupId];
+    const mins = Math.min(240, Math.max(1, Number(minutes) || 5));
+    if (!group) return;
+    countAlert(state, groupId, choice, now);
+    if (locked[tabId] && locked[tabId].kind === 'alert') delete locked[tabId];
+    if (choice === 'lock') {
+      state.alertLock[groupId] = now + mins * 60000;
+      for (const tv of Object.values(visits)) delete tv[groupId]; // a fresh visit starts after the lock
+    } else {
+      if (v && choice === 'dismiss') v.dismissed = true;
+      if (v && choice === 'remind') v.askAt = v.secs + mins * 60;
+      if (v) v.asking = false;
+      browser.tabs.sendMessage(tabId, { type: 'unlock' }, { frameId: 0 }).catch(() => {});
+    }
+    await browser.storage.session.set({ visits, locked });
+    await saveState(state);
+  }).then(() => tick());
 }
 
 // ---------- Enforcement ----------
@@ -73,58 +157,68 @@ function countBlock(state, groupId, now) {
 }
 
 /**
- * Block open tabs that should be blocked, and lift overlays that no longer should be.
- * Tabs showing the overlay are kept in session storage: { [tabId]: groupId }.
+ * Block open tabs that should be blocked, and lift block overlays that no longer should be.
+ * Tabs showing an overlay are kept in session storage: { [tabId]: { g: groupId, kind } },
+ * kind 'block' (the lock screen) or 'alert' (waiting for an answer; stays until answered).
  */
-async function enforceAll(settings, state, now) {
-  const tabs = await browser.tabs.query({});
-  const { locked = {} } = await browser.storage.session.get('locked');
+async function enforceAll(settings, state, now, tabs, locked) {
   let changed = false;
   for (const tab of tabs) {
-    const wasLocked = tab.id in locked;
+    let entry = locked[tab.id];
+    if (typeof entry === 'string') entry = locked[tab.id] = { g: entry, kind: 'block' }; // saved by 1.3–1.4
     const blocker = Anchor.isTrackable(tab.url) ? Anchor.evaluateUrl(tab.url, settings, state, now).blocker : null;
-    if (!blocker) {
-      if (wasLocked) {
-        delete locked[tab.id];
-        browser.tabs.sendMessage(tab.id, { type: 'unlock' }, { frameId: 0 }).catch(() => {});
-      }
+    if (blocker) {
+      if (entry && entry.kind === 'block') continue;
+      countBlock(state, blocker.group.id, now);
+      changed = true;
+      locked[tab.id] = { g: blocker.group.id, kind: 'block' };
+      lockTab(tab, blocker.group.id, 'block');
       continue;
     }
-    if (wasLocked) continue;
-    countBlock(state, blocker.group.id, now);
-    changed = true;
-    locked[tab.id] = blocker.group.id;
-    lockTab(tab, blocker.group.id);
+    if (entry && entry.kind === 'block') {
+      delete locked[tab.id];
+      browser.tabs.sendMessage(tab.id, { type: 'unlock' }, { frameId: 0 }).catch(() => {});
+    }
   }
-  await browser.storage.session.set({ locked });
+  for (const id of Object.keys(locked)) if (!tabs.some((t) => String(t.id) === id)) delete locked[id];
   return changed;
 }
 
-/** Cover the page with the lock overlay; if the page can't show it, go to the block page. */
-function lockTab(tab, groupId) {
-  const redirect = async () => {
-    const { locked = {} } = await browser.storage.session.get('locked');
+/**
+ * Cover the page with an overlay. If a block overlay can't be shown, go to the block page; if an
+ * alert can't be shown (no content script there), ask again in 5 minutes.
+ */
+function lockTab(tab, groupId, kind, extra = {}) {
+  const failed = () => serial(async () => {
+    const { locked = {}, visits = {} } = await browser.storage.session.get(['locked', 'visits']);
     delete locked[tab.id];
-    await browser.storage.session.set({ locked });
-    browser.tabs.update(tab.id, { url: blockUrl(tab.url, groupId) }).catch(() => {});
-  };
-  browser.tabs.sendMessage(tab.id, { type: 'lock', groupId }, { frameId: 0 })
-    .then((res) => { if (!res || !res.locked) redirect(); }, redirect);
+    const v = visits[tab.id] && visits[tab.id][groupId];
+    if (kind === 'alert' && v) { v.asking = false; v.askAt = v.secs + 5 * 60; }
+    await browser.storage.session.set({ locked, visits });
+    if (kind === 'block') browser.tabs.update(tab.id, { url: blockUrl(tab.url, groupId) }).catch(() => {});
+  });
+  browser.tabs.sendMessage(tab.id, { type: 'lock', groupId, kind, ...extra }, { frameId: 0 })
+    .then((res) => { if (!res || !res.locked) failed(); }, failed);
 }
 
 /** Wake up exactly when something can change: allowance runs out, bypass ends, schedule flips. */
-async function scheduleNextCheck(settings, state, now, tab) {
+async function scheduleNextCheck(settings, state, now, tab, visits) {
   const times = [];
   for (const g of settings.groups) {
     if (!g.enabled) continue;
     const bp = state.bypass[g.id];
     if (bp && bp.until > now) times.push(bp.until);
+    const lockUntil = state.alertLock[g.id];
+    if (lockUntil > now) times.push(lockUntil);
     const flip = Anchor.nextScheduleChange(g.schedule, now);
     if (flip) times.push(flip);
   }
   if (tab) {
     for (const m of Anchor.evaluateUrl(tab.url, settings, state, now).matches) {
-      if (m.enabled && m.remaining > 0) times.push(now + m.remaining * 1000);
+      if (m.enabled && !m.off && m.behavior === 'allowance' && m.remaining > 0) times.push(now + m.remaining * 1000);
+    }
+    for (const v of Object.values(visits[tab.id] || {})) {
+      if (!v.dismissed && !v.asking && v.askAt > v.secs) times.push(now + (v.askAt - v.secs) * 1000);
     }
   }
   const next = Math.min(...times.filter((t) => t > now));
@@ -135,8 +229,9 @@ async function scheduleNextCheck(settings, state, now, tab) {
 async function updateBadge(settings, state, now, tab) {
   let text = '';
   if (tab) {
+    // Only an allowance that's counting right now: not while the group rests or is blocked.
     const live = Anchor.evaluateUrl(tab.url, settings, state, now).matches
-      .filter((m) => m.enabled && m.remaining !== null && !m.reason);
+      .filter((m) => m.enabled && !m.off && m.behavior === 'allowance' && !m.reason);
     if (live.length) {
       const min = Math.min(...live.map((m) => m.remaining));
       text = min >= 60 ? `${Math.floor(min / 60)}m` : '<1m';
@@ -150,13 +245,18 @@ function tick() {
   return serial(async () => {
     const now = Date.now();
     const { settings, state } = await load();
-    const { changed: tracked, tab } = await flush(settings, state, now);
-    const blocked = await enforceAll(settings, state, now);
-    if (tracked || blocked) {
+    const { visits = {}, locked = {} } = await browser.storage.session.get(['visits', 'locked']);
+    const { changed: tracked, tab } = await flush(settings, state, now, visits);
+    const tabs = await browser.tabs.query({});
+    pruneVisits(settings, visits, tabs);
+    const blocked = await enforceAll(settings, state, now, tabs, locked);
+    const asked = maybeAsk(settings, state, now, tab, visits, locked);
+    await browser.storage.session.set({ visits, locked });
+    if (tracked || blocked || asked) {
       Anchor.pruneState(state, settings, now);
       await saveState(state);
     }
-    await scheduleNextCheck(settings, state, now, tab);
+    await scheduleNextCheck(settings, state, now, tab, visits);
     await updateBadge(settings, state, now, tab);
   });
 }
@@ -256,12 +356,6 @@ async function handleEndBypass(groupId) {
   });
 }
 
-/** Next time the schedule starts blocking, if the group works then (not a day off). */
-function scheduleStartWhileActive(group, state, now) {
-  const at = Anchor.nextScheduleChange(group.schedule, now);
-  return at && Anchor.activeOn(group, state, at).active ? at : null;
-}
-
 /** What the on-page reminder needs to know about the page it runs on. */
 async function pageStatus(url) {
   const now = Date.now();
@@ -274,17 +368,25 @@ async function pageStatus(url) {
     now,
     language: settings.language,
     theme: settings.theme,
-    groups: matches.filter((m) => m.enabled && !m.blocked).map((m) => ({
-      id: m.group.id,
-      name: m.group.name,
-      color: m.group.color,
-      reminders: m.group.reminders,
-      period: m.group.limit.period,
-      remaining: m.remaining === null ? null : Math.max(0, m.remaining - Math.max(0, pending)),
-      bypassUntil: m.bypassUntil,
-      blockedAfterBreak: !!m.reason,
-      scheduleStart: m.reason ? null : scheduleStartWhileActive(m.group, state, now),
-    })),
+    // A group on a holiday off says nothing; one outside its schedule only says when it starts.
+    groups: matches.filter((m) => m.enabled && !m.blocked && m.off !== 'holiday' && m.reason !== 'alertLock').map((m) => {
+      const resting = m.off === 'schedule';
+      const startsBlocking = resting && m.behavior === 'block' && m.until && Anchor.activeOn(m.group, state, m.until + 1000).active;
+      return {
+        id: m.group.id,
+        name: m.group.name,
+        color: m.group.color,
+        reminders: m.group.reminders,
+        behavior: m.behavior,
+        resting,
+        period: m.group.limit.period,
+        alertEvery: m.group.alert.every,
+        remaining: resting || m.behavior !== 'allowance' ? null : Math.max(0, m.remaining - Math.max(0, pending)),
+        bypassUntil: m.bypassUntil,
+        blockedAfterBreak: !!m.reason,
+        scheduleStart: startsBlocking ? m.until : null,
+      };
+    }),
   };
 }
 
@@ -296,6 +398,9 @@ browser.runtime.onMessage.addListener((msg, sender) => {
       return Promise.resolve({ ok: true });
     case 'closeTab':
       return sender.tab ? browser.tabs.remove(sender.tab.id) : undefined;
+    case 'alertAnswer': // from the alert screen; reply at once, its frame may go away
+      if (sender.tab) answerAlert(sender.tab.id, msg.groupId, msg.choice, msg.minutes);
+      return Promise.resolve({ ok: true });
     case 'pageStatus':
       return pageStatus(msg.url);
     case 'bypass':
@@ -318,6 +423,8 @@ browser.tabs.onUpdated.addListener(async (tabId) => {
   // A new address may not be blocked, or may be a new page without the overlay: re-check it.
   const { locked = {} } = await browser.storage.session.get('locked');
   if (tabId in locked) {
+    // An alert belongs to the page it was asked on: a new address drops it.
+    if (locked[tabId].kind === 'alert') browser.tabs.sendMessage(tabId, { type: 'unlock' }, { frameId: 0 }).catch(() => {});
     delete locked[tabId];
     await browser.storage.session.set({ locked });
   }

@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="blocked.css">
 </head>
 <body>
-  <main class="wrap">
+  <main class="wrap" id="blockView">
     <div class="mark" aria-hidden="true"><span></span></div>
     <span class="pill group" id="group"><span class="dot" id="groupDot"></span><span id="groupName"></span></span>
     <h1 id="title"></h1>
@@ -25,6 +25,26 @@
     <p class="note faint" id="bypassNote" hidden></p>
 
     <button class="link faint" id="disable" hidden data-i18n="turnOffGroup">Turn off this group…</button>
+  </main>
+
+  <!-- Alert mode: shown in the overlay when a visit reaches the group's time. -->
+  <main class="wrap" id="alertView" hidden>
+    <div class="mark" aria-hidden="true"><span></span></div>
+    <span class="pill group"><span class="dot" id="alertDot"></span><span id="alertGroup"></span></span>
+    <h1 id="alertTitle"></h1>
+    <p class="reason muted" data-i18n="alertQuestion"></p>
+    <p class="note faint" id="alertToday"></p>
+    <div class="alert-choices">
+      <button class="btn" id="alertDismiss" data-i18n="alertDismiss"></button>
+      <div class="choice">
+        <button class="btn" id="alertRemind" data-i18n="alertRemind"></button>
+        <select class="input" id="alertRemindMin" data-i18n-aria="alertRemind"></select>
+      </div>
+      <div class="choice">
+        <button class="btn primary" id="alertLock" data-i18n="alertLock"></button>
+        <select class="input" id="alertLockMin" data-i18n-aria="alertLock"></select>
+      </div>
+    </div>
   </main>
 
   <script src="../i18n.js"></script>

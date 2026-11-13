@@ -20,3 +20,10 @@ h1 { font-size: 26px; word-break: break-word; }
 @media (prefers-reduced-motion: reduce) { .mark { animation: none; } }
 /* Inside the lock overlay: never scroll the site underneath. */
 html.embedded, html.embedded body { overscroll-behavior: none; }
+
+/* Alert screen */
+.alert-choices { display: grid; gap: 10px; width: min(320px, 100%); margin-top: 8px; }
+.alert-choices > .btn { width: 100%; }
+.choice { display: flex; }
+.choice .btn { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.choice select { width: 104px; border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; height: 36px; }

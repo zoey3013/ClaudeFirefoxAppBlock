@@ -69,14 +69,14 @@ test('hour limit splits usage across hour boundaries', () => {
   assert.equal(A.usedSeconds(state, g.id, 'day', at('2026-10-28T11:02')), 180);
 });
 
-test('no schedule and no limit means always blocked; bypass lifts it', () => {
+test('block mode with no schedule always blocks; a break lifts it', () => {
   const settings = { groups: [A.newGroup('A')] };
   const g = settings.groups[0];
   g.sites = ['a.com'];
-  g.limit.enabled = false;
+  g.behavior = 'block';
   const state = A.emptyState();
   const now = Date.now();
-  assert.equal(A.evaluateUrl('https://a.com', settings, state, now).blocker.reason, 'always');
+  assert.equal(A.evaluateUrl('https://a.com', settings, state, now).blocker.reason, 'block');
   state.bypass[g.id] = { until: now + 60000, uses: [now] };
   assert.equal(A.evaluateUrl('https://a.com', settings, state, now).blocker, null);
   assert.equal(A.bypassUsesLeft(g, state, now), 2);
@@ -175,13 +175,13 @@ test('holidays off: the group rests on a holiday only if switched on', () => {
   const settings = { groups: [A.newGroup('Work')] };
   const g = settings.groups[0];
   g.sites = ['a.com'];
-  g.limit.enabled = false;
+  g.behavior = 'block';
   const state = A.emptyState();
   state.holidays = { country: 'DO', fetchedAt: 1, days: [{ date: '2026-11-09', name: 'Día de la Constitución' }] };
   const holiday = at('2026-11-09T10:00');
-  assert.equal(A.evaluateUrl('https://a.com', settings, state, holiday).blocker.reason, 'always');
+  assert.equal(A.evaluateUrl('https://a.com', settings, state, holiday).blocker.reason, 'block');
   g.holidaysOff = true;
-  assert.equal(A.evaluateUrl('https://a.com', settings, state, holiday).blocker.reason, 'always'); // only with a schedule
+  assert.equal(A.evaluateUrl('https://a.com', settings, state, holiday).blocker.reason, 'block'); // only with a schedule
   g.schedule = { enabled: true, rules: [{ days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }] };
   const r = A.evaluateUrl('https://a.com', settings, state, holiday);
   assert.equal(r.blocker, null);
@@ -212,4 +212,61 @@ test('older settings gain the holidays switch and country; 1.4.0 active days are
   assert.equal('days' in s.groups[0], false);
   assert.equal(s.groups[0].holidaysOff, false);
   assert.equal(s.country, 'none');
+});
+
+test('1.4 groups get a mode: allowance if they had one, otherwise block', () => {
+  const withLimit = A.newGroup('A'); delete withLimit.behavior; withLimit.limit = { enabled: true, minutes: 30, period: 'day' };
+  const noLimit = A.newGroup('B'); delete noLimit.behavior; noLimit.limit = { enabled: false, minutes: 15, period: 'hour' };
+  delete noLimit.alert;
+  const s = A.normalizeSettings({ version: 1, groups: [withLimit, noLimit] });
+  assert.equal(s.groups[0].behavior, 'allowance');
+  assert.equal(s.groups[1].behavior, 'block');
+  assert.equal('enabled' in s.groups[0].limit, false);
+  assert.deepEqual(s.groups[1].alert, { every: 20 });
+});
+
+test('the schedule sets when a group is active, for every mode', () => {
+  const work = { enabled: true, rules: [{ days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' }] };
+  const settings = { groups: [A.newGroup('Block'), A.newGroup('Allowance'), A.newGroup('Alert')] };
+  const [block, allowance, alert] = settings.groups;
+  block.behavior = 'block'; alert.behavior = 'alert';
+  for (const g of settings.groups) { g.sites = [`${g.name.toLowerCase()}.com`]; g.schedule = JSON.parse(JSON.stringify(work)); }
+  allowance.limit = { minutes: 10, period: 'day' };
+  const state = A.emptyState();
+  const inside = at('2026-11-09T10:00'), outside = at('2026-11-09T18:00'); // a Monday
+  // Block: blocks inside the hours until they end; rests outside and says when it starts.
+  const b = A.evaluateUrl('https://block.com', settings, state, inside).blocker;
+  assert.equal(b.reason, 'block');
+  assert.equal(b.until, at('2026-11-09T17:00'));
+  const rest = A.evaluateUrl('https://block.com', settings, state, outside).matches[0];
+  assert.equal(rest.blocked, false);
+  assert.equal(rest.off, 'schedule');
+  assert.equal(rest.until, at('2026-11-10T09:00'));
+  // Allowance: time outside the hours doesn't count; inside it does and runs out.
+  A.recordUsage(settings, state, 'https://allowance.com', at('2026-11-09T18:00'), at('2026-11-09T18:30'));
+  assert.equal(A.usedSeconds(state, allowance.id, 'day', outside), 0);
+  A.recordUsage(settings, state, 'https://allowance.com', at('2026-11-09T09:00'), at('2026-11-09T09:10'));
+  assert.equal(A.evaluateUrl('https://allowance.com', settings, state, inside).blocker.reason, 'limit');
+  assert.equal(A.evaluateUrl('https://allowance.com', settings, state, outside).blocker, null);
+  // Alert: never blocks by itself.
+  assert.equal(A.evaluateUrl('https://alert.com', settings, state, inside).blocker, null);
+  assert.equal(A.evaluateUrl('https://alert.com', settings, state, inside).matches[0].behavior, 'alert');
+});
+
+test('a lock chosen on an alert blocks with no way out, then ends', () => {
+  const settings = { groups: [A.newGroup('Alert')] };
+  const g = settings.groups[0];
+  g.behavior = 'alert';
+  g.sites = ['a.com'];
+  const state = A.emptyState();
+  const now = Date.now();
+  assert.equal(A.evaluateUrl('https://a.com', settings, state, now).blocker, null);
+  state.alertLock[g.id] = now + 15 * 60000;
+  state.bypass[g.id] = { until: now + 60000, uses: [now] }; // a break doesn't lift it
+  const b = A.evaluateUrl('https://a.com', settings, state, now).blocker;
+  assert.equal(b.reason, 'alertLock');
+  assert.equal(b.until, now + 15 * 60000);
+  assert.equal(A.evaluateUrl('https://a.com', settings, state, now + 16 * 60000).blocker, null);
+  A.pruneState(state, settings, now + 16 * 60000);
+  assert.deepEqual(state.alertLock, {});
 });

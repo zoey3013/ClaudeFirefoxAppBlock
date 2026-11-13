@@ -1,5 +1,5 @@
 /*
- * Anchor core: data model, URL matching, schedules, limits and puzzles.
+ * Anchor core: data model, URL matching, schedules, modes (block, allowance, alert) and puzzles.
  * Shared by the background script and every UI page (exposed as `Anchor`).
  */
 (function (root) {
@@ -23,8 +23,11 @@
       enabled: true,
       mode: 'block', // 'block' = block listed sites, 'allow' = block everything except listed sites
       sites: [],
+      behavior: 'allowance', // 'block' | 'allowance' | 'alert': what the group does while active
+      // When the group is active. Off: always active.
       schedule: { enabled: false, rules: [{ days: [1, 2, 3, 4, 5], start: '09:00', end: '17:00' }] },
-      limit: { enabled: true, minutes: 30, period: 'day' },
+      limit: { minutes: 30, period: 'day' }, // allowance mode
+      alert: { every: 20 }, // alert mode: ask after this many minutes in a row
       bypass: { enabled: true, minutes: 5, maxUses: 3, period: 'day' },
       lock: { method: 'puzzle', pinHash: null, salt: null }, // 'none' | 'puzzle' | 'pin'
       reminders: { card: true, countdown: true }, // on-page notes shown by the content script
@@ -44,7 +47,7 @@
     work.enabled = false;
     work.sites = ['youtube.com', 'news.ycombinator.com', 'netflix.com'];
     work.schedule.enabled = true;
-    work.limit = { enabled: false, minutes: 15, period: 'hour' };
+    work.behavior = 'block';
 
     return { version: 1, language: 'auto', theme: 'auto', country: 'none', groups: [social, work] };
   }
@@ -59,6 +62,13 @@
       if (!g.reminders) g.reminders = { card: true, countdown: true };
       delete g.days; // 1.4.0 had per-group active days; the schedule's days cover that
       if (typeof g.holidaysOff !== 'boolean') g.holidaysOff = false;
+      if (!g.behavior) {
+        // Before 1.5 a group blocked during its schedule and could also have an allowance.
+        // Now it has one mode, and the schedule says when it's active.
+        g.behavior = g.limit && g.limit.enabled === false ? 'block' : 'allowance';
+      }
+      if (g.limit) delete g.limit.enabled;
+      if (!g.alert) g.alert = { every: 20 };
     }
     out.groups = out.groups || [];
     return out;
@@ -70,7 +80,9 @@
     // blocks: { 'YYYY-MM-DD': { [groupId]: count } }
     // bypass: { [groupId]: { until: ms, uses: [ms...] } }
     // holidays: { country, fetchedAt, days: [{ date: 'YYYY-MM-DD', name }] } for the chosen country
-    return { usage: {}, sites: {}, blocks: {}, bypass: {}, holidays: null };
+    // alertLock: { [groupId]: until ms } — "Lock for X minutes" chosen on an alert
+    // alerts: { 'YYYY-MM-DD': { [groupId]: { shown, dismiss, remind, lock } } }
+    return { usage: {}, sites: {}, blocks: {}, bypass: {}, holidays: null, alertLock: {}, alerts: {} };
   }
 
   function normalizeState(s) {
@@ -213,22 +225,31 @@
     return h.days.find((d) => d.date === dk) || null;
   }
 
-  /** Whether the group works at `now`: not on a holiday it takes off (a schedule option). */
+  /**
+   * Whether the group is active at `now`. With a schedule, only during its hours, and not on
+   * a holiday it takes off. Without one, always.
+   */
   function activeOn(group, state, now) {
-    if (group.holidaysOff && group.schedule && group.schedule.enabled) {
+    const sch = group.schedule;
+    if (!sch || !sch.enabled) return { active: true };
+    if (group.holidaysOff) {
       const holiday = holidayOn(state, now);
       if (holiday) return { active: false, off: 'holiday', holiday };
     }
+    if (!scheduleActive(sch, now)) return { active: false, off: 'schedule' };
     return { active: true };
   }
 
   /**
    * Status of one group right now.
-   * reason: 'schedule' | 'limit' | 'always' | null
+   * reason: 'block' | 'limit' | 'alertLock' | null
+   * off:    'holiday' | 'schedule' | null — resting: blocks nothing, time doesn't count
    */
   function evaluateGroup(group, state, now) {
+    const behavior = group.behavior || 'allowance';
     const out = {
       group,
+      behavior,
       enabled: group.enabled,
       blocked: false,
       reason: null,
@@ -237,10 +258,10 @@
       used: null,
       bypassUntil: 0,
       bypassLeft: group.bypass.enabled ? bypassUsesLeft(group, state, now) : 0,
-      off: null, // 'holiday' when the group takes today off
+      off: null,
       holiday: null,
     };
-    if (group.limit.enabled) {
+    if (behavior === 'allowance') {
       out.used = usedSeconds(state, group.id, group.limit.period, now);
       out.remaining = Math.max(0, group.limit.minutes * 60 - out.used);
     }
@@ -249,17 +270,27 @@
     if (!today.active) {
       out.off = today.off;
       out.holiday = today.holiday || null;
+      if (today.off === 'schedule') out.until = nextScheduleChange(group.schedule, now); // when it starts
+      return out;
+    }
+    const activeUntil = group.schedule.enabled ? nextScheduleChange(group.schedule, now) : null;
+
+    // A lock chosen on an alert: no breaks, no early way out.
+    const lockUntil = (state.alertLock || {})[group.id];
+    if (lockUntil > now) {
+      out.reason = 'alertLock';
+      out.until = lockUntil;
+      out.blocked = true;
       return out;
     }
 
-    if (scheduleActive(group.schedule, now)) {
-      out.reason = 'schedule';
-      out.until = nextScheduleChange(group.schedule, now);
-    } else if (group.limit.enabled && out.remaining <= 0) {
+    if (behavior === 'block') {
+      out.reason = 'block';
+      out.until = activeUntil;
+    } else if (behavior === 'allowance' && out.remaining <= 0) {
       out.reason = 'limit';
-      out.until = periodEnd(group.limit.period, now);
-    } else if (!group.schedule.enabled && !group.limit.enabled) {
-      out.reason = 'always';
+      const reset = periodEnd(group.limit.period, now);
+      out.until = activeUntil ? Math.min(activeUntil, reset) : reset;
     }
 
     const bp = state.bypass[group.id];
@@ -282,7 +313,7 @@
   function recordUsage(settings, state, url, start, end) {
     if (end <= start || !isTrackable(url)) return;
     const host = hostOf(url);
-    // Time on a group's day off doesn't count toward its allowance.
+    // Time while a group rests (outside its schedule, or a holiday off) doesn't count for it.
     const groups = settings.groups.filter((g) => groupMatches(g, url) && activeOn(g, state, start).active);
     let t = start;
     while (t < end) {
@@ -313,6 +344,10 @@
       if (!ids.has(gid)) { delete state.bypass[gid]; continue; }
       const bp = state.bypass[gid];
       bp.uses = (bp.uses || []).filter((t) => t > now - 8 * 86400000);
+    }
+    for (const k of Object.keys(state.alerts || {})) if (k < cutoff) delete state.alerts[k];
+    for (const gid of Object.keys(state.alertLock || {})) {
+      if (!ids.has(gid) || state.alertLock[gid] <= now) delete state.alertLock[gid];
     }
   }
 
@@ -385,22 +420,27 @@
     const g = st.group;
     if (!g.enabled) return { kind: 'off', text: tr('statusOff') };
     if (st.off === 'holiday') return { kind: 'off', text: tr('statusHoliday', { name: st.holiday.name }) };
+    if (st.off === 'schedule') {
+      return { kind: 'off', text: st.until ? tr('statusStarts', { when: formatAt(st.until, now) }) : tr('statusResting') };
+    }
+    if (st.reason === 'alertLock') return { kind: 'blocked', text: tr('statusAlertLock', { time: formatClock(st.until) }) };
     if (st.bypassUntil) return { kind: 'break', text: tr('statusBreak', { time: formatClock(st.bypassUntil) }) };
-    if (st.reason === 'schedule') {
-      return { kind: 'blocked', text: st.until ? tr('statusBlockingUntil', { when: formatWhen(st.until, now) }) : tr('statusBlocking') };
+    if (st.reason === 'block') {
+      return { kind: 'blocked', text: st.until ? tr('statusBlockingUntil', { when: formatWhen(st.until, now) }) : tr('statusAlways') };
     }
     if (st.reason === 'limit') {
       const reset = g.limit.period === 'day' ? tr('resetMidnight') : tr('atTime', { time: formatClock(st.until) });
       return { kind: 'blocked', text: tr('statusLimit', { reset }) };
     }
-    if (st.reason === 'always') return { kind: 'blocked', text: tr('statusAlways') };
     const parts = [];
-    if (st.remaining !== null) {
+    if (st.behavior === 'allowance') {
       parts.push(tr(g.limit.period === 'hour' ? 'statusLeftHour' : 'statusLeftToday', { d: formatDuration(st.remaining) }));
+    } else if (st.behavior === 'alert') {
+      parts.push(tr('statusAlert', { d: formatDuration(g.alert.every * 60) }));
     }
     if (g.schedule.enabled) {
-      const next = nextScheduleChange(g.schedule, now);
-      if (next) parts.push(tr('statusBlocksAt', { when: formatAt(next, now) }));
+      const end = nextScheduleChange(g.schedule, now);
+      if (end) parts.push(tr('statusUntil', { when: formatWhen(end, now) }));
     }
     return { kind: 'open', text: parts.join(' · ') || tr('statusOpen') };
   }

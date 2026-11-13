@@ -6,6 +6,10 @@ const targetUrl = params.get('url') || '';
 const hintGroupId = params.get('g');
 // Embedded: shown inside the lock overlay on top of the still-open site, rather than in place of it.
 const embedded = params.get('embedded') === '1';
+// Alert mode asks instead of blocking: "You've been here for X minutes. Do you want to stay?"
+const alertMode = embedded && params.get('alert') === '1';
+const alertMinutes = Number(params.get('m')) || 0;
+const ALERT_CHOICES = [5, 10, 15, 30, 60];
 if (embedded) document.documentElement.classList.add('embedded');
 const $ = (id) => document.getElementById(id);
 const { t } = I18n;
@@ -24,9 +28,39 @@ async function refresh() {
   const status = blocker || matches.find((m) => m.group.id === hintGroupId) || matches[0] || null;
   const first = !view;
   view = { settings: s, state: st, status, blocked: !!blocker };
-  render();
+  if (alertMode) renderAlert(); else render();
   if (first && embedded) parent.postMessage({ anchor: 'lock-ready' }, '*');
 }
+
+function renderAlert() {
+  const g = view.settings.groups.find((x) => x.id === hintGroupId);
+  $('blockView').hidden = true;
+  $('alertView').hidden = false;
+  if (!g) return;
+  // The group's color is this screen's accent.
+  document.documentElement.style.setProperty('--accent', g.color);
+  $('alertDot').style.background = g.color;
+  $('alertGroup').textContent = g.name;
+  $('alertTitle').textContent = t('alertTitle', { d: Anchor.formatDuration(alertMinutes * 60) });
+  $('alertToday').textContent = t('alertToday', { d: Anchor.formatDuration(Anchor.usedSeconds(view.state, g.id, 'day', Date.now())) });
+  document.title = `${g.name} — Anchor`;
+  for (const id of ['alertRemindMin', 'alertLockMin']) {
+    const sel = $(id);
+    if (!sel.options.length) {
+      for (const n of ALERT_CHOICES) sel.append(new Option(t('nMinutes', { n }), String(n)));
+      sel.value = id === 'alertRemindMin' ? '10' : '15';
+    }
+  }
+}
+
+function answer(choice, minutes) {
+  for (const b of document.querySelectorAll('#alertView .btn')) b.disabled = true;
+  browser.runtime.sendMessage({ type: 'alertAnswer', groupId: hintGroupId, choice, minutes }).catch(() => {});
+}
+
+$('alertDismiss').addEventListener('click', () => answer('dismiss'));
+$('alertRemind').addEventListener('click', () => answer('remind', Number($('alertRemindMin').value)));
+$('alertLock').addEventListener('click', () => answer('lock', Number($('alertLockMin').value)));
 
 function periodWord(p) { return t(p === 'hour' ? 'perHour' : 'perToday'); }
 
@@ -58,7 +92,9 @@ function render() {
 
   const bypass = $('bypass');
   const note = $('bypassNote');
-  const canBypass = blocked && status.group.bypass.enabled;
+  // A lock chosen on an alert has no early way out.
+  const lockedByAlert = status && status.reason === 'alertLock';
+  const canBypass = blocked && !lockedByAlert && status.group.bypass.enabled;
   bypass.hidden = !canBypass;
   note.hidden = !canBypass;
   if (canBypass) {
@@ -69,14 +105,15 @@ function render() {
       ? t('breaksLeft', { left: status.bypassLeft, max: b.maxUses, per: periodWord(b.period) })
       : t('noBreaksLeft', { per: periodWord(b.period) });
   }
-  $('disable').hidden = !blocked;
+  $('disable').hidden = !blocked || lockedByAlert;
 }
 
 function reasonText(st, now) {
   const g = st.group;
   const allowMode = g.mode === 'allow';
-  if (st.reason === 'schedule') {
-    const until = st.until ? t('untilWhen', { when: Anchor.formatWhen(st.until, now) }) : '';
+  if (st.reason === 'alertLock') return t('reasonAlertLock', { name: g.name, time: Anchor.formatClock(st.until) });
+  if (st.reason === 'block' && st.until) {
+    const until = t('untilWhen', { when: Anchor.formatWhen(st.until, now) });
     return t(allowMode ? 'reasonScheduleAllow' : 'reasonSchedule', { name: g.name, until });
   }
   if (st.reason === 'limit') {
@@ -131,10 +168,12 @@ $('disable').addEventListener('click', async () => {
   if (!view.blocked) goToSite();
 });
 
-browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.settings || changes.state)) refresh();
-});
-
 refresh();
-setInterval(() => { if (view) render(); }, 1000);
-setInterval(refresh, 15000);
+// The alert screen is drawn once: it goes away as soon as it's answered.
+if (!alertMode) {
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && (changes.settings || changes.state)) refresh();
+  });
+  setInterval(() => { if (view) render(); }, 1000);
+  setInterval(refresh, 15000);
+}

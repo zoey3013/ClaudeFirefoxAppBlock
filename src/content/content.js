@@ -25,7 +25,7 @@
   let activeLeft = Infinity; // seconds of allowance left, only drains while this tab is in use
   let lastUrl = '';
   let cardTimer = null;
-  let lock = null; // { el, frame, groupId, paused: [media], overflow, guard }
+  let lock = null; // { el, frame, groupId, kind, paused: [media], overflow, guard, keepPaused }
 
   const make = (tag, attrs = {}, ...kids) => {
     const n = document.createElement(tag);
@@ -55,6 +55,8 @@
   // ---------- Reminder card ----------
 
   function cardText(g, now) {
+    if (g.resting) return I18n.t('cardScheduled', { when: Anchor.formatAt(g.scheduleStart, now) });
+    if (g.behavior === 'alert') return I18n.t('cardAlert', { d: Anchor.formatDuration(g.alertEvery * 60) });
     if (g.bypassUntil) return I18n.t('cardBreak', { time: Anchor.formatClock(g.bypassUntil) });
     if (g.remaining !== null) return I18n.t('cardCounting', { d: Anchor.formatDuration(g.remaining), per: perWord(g.period) });
     if (g.scheduleStart) return I18n.t('cardScheduled', { when: Anchor.formatAt(g.scheduleStart, now) });
@@ -71,7 +73,8 @@
   }
 
   function showCard() {
-    const groups = status.groups.filter((g) => g.reminders.card);
+    // A group outside its schedule only gets a card if it will start blocking.
+    const groups = status.groups.filter((g) => g.reminders.card && (!g.resting || g.scheduleStart));
     if (!groups.length) return;
     hideCard();
     const now = Date.now();
@@ -135,29 +138,65 @@
 
   // While locked, the page underneath keeps its state but gets no keys and can't play media.
   const swallowKey = (e) => { if (lock) { e.stopImmediatePropagation(); e.preventDefault(); } };
-  const stopPlayback = (e) => { if (lock && e.target instanceof HTMLMediaElement) e.target.pause(); };
+  const stopPlayback = (e) => { if (lock && e.target && typeof e.target.pause === 'function') e.target.pause(); };
+
+  /**
+   * Every video and audio element, including ones inside shadow DOMs (Reddit's player lives in
+   * one; Firefox lets add-ons into closed ones too) and inside same-site frames.
+   */
+  function allMedia(root = document, found = []) {
+    for (const el of root.querySelectorAll('*')) {
+      // Tag names, not instanceof: elements in other frames come from another window.
+      const tag = el.localName;
+      if ((tag === 'video' || tag === 'audio') && typeof el.pause === 'function') found.push(el);
+      const shadow = el.openOrClosedShadowRoot || el.shadowRoot;
+      if (shadow) allMedia(shadow, found);
+      if ((tag === 'iframe' || tag === 'frame') && el !== (lock && lock.frame)) {
+        let doc = null;
+        try { doc = el.contentDocument; } catch { /* other site: not reachable */ }
+        if (doc) allMedia(doc, found);
+      }
+    }
+    return found;
+  }
 
   function pauseMedia() {
     const paused = [];
-    for (const m of document.querySelectorAll('video, audio')) {
+    for (const m of allMedia()) {
       if (!m.paused) { m.pause(); paused.push(m); }
     }
     return paused;
   }
 
-  function lockPage(groupId) {
-    if (lock) return Promise.resolve({ locked: true, already: true });
+  function frameUrl(groupId, kind, extra) {
+    const params = new URLSearchParams({ url: location.href, g: groupId, embedded: '1' });
+    if (kind === 'alert') { params.set('alert', '1'); params.set('m', String(extra.m || 0)); }
+    return `${BLOCK_PAGE}?${params}`;
+  }
+
+  function lockPage(msg) {
+    const { groupId, kind = 'block' } = msg;
+    if (lock) {
+      // Same overlay, new contents: an alert answered with "Lock for" turns into the lock screen.
+      if (lock.kind !== kind || lock.groupId !== groupId) {
+        lock.kind = kind;
+        lock.groupId = groupId;
+        lock.frame.src = frameUrl(groupId, kind, msg);
+      }
+      return Promise.resolve({ locked: true, already: true });
+    }
     hideCard();
     if (pill) { pill.remove(); pill = null; }
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 
-    const params = new URLSearchParams({ url: location.href, g: groupId, embedded: '1' });
-    const frame = make('iframe', { src: `${BLOCK_PAGE}?${params}`, title: 'Anchor', allow: '' });
+    const frame = make('iframe', { src: frameUrl(groupId, kind, msg), title: 'Anchor', allow: '' });
     const el = make('anchor-focus-lock', {}, frame);
     const html = document.documentElement;
     lock = {
-      el, frame, groupId,
+      el, frame, groupId, kind,
       paused: pauseMedia(),
+      // Players can restart themselves or load new videos; keep everything paused while locked.
+      keepPaused: setInterval(() => { for (const m of allMedia()) if (!m.paused) m.pause(); }, 500),
       overflow: [html.style.getPropertyValue('overflow'), html.style.getPropertyPriority('overflow')],
       // Put the overlay back if the page removes it.
       guard: new MutationObserver(() => { if (lock && !el.isConnected) html.append(el); }),
@@ -183,8 +222,9 @@
 
   function unlockPage(resume = true) {
     if (!lock) return { unlocked: false };
-    const { el, paused, overflow, guard } = lock;
+    const { el, paused, overflow, guard, keepPaused } = lock;
     lock = null;
+    clearInterval(keepPaused);
     guard.disconnect();
     el.remove();
     const html = document.documentElement;
@@ -238,7 +278,7 @@
   browser.runtime.onMessage.addListener((msg) => {
     if (!msg) return undefined;
     if (msg.type === 'recheck') onUrlMaybeChanged();
-    if (msg.type === 'lock') return lockPage(msg.groupId);
+    if (msg.type === 'lock') return lockPage(msg);
     if (msg.type === 'unlock') return Promise.resolve(unlockPage());
     return undefined;
   });

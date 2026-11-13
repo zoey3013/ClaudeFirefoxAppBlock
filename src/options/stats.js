@@ -95,13 +95,23 @@ const Stats = (() => {
         el('div', { class: 'inline', style: 'justify-content:space-between' },
           el('span', { class: 'inline' }, el('span', { class: 'dot', style: `background:${g.color}` }), el('strong', {}, g.name)),
           el('span', { class: 'muted' }, Anchor.formatDuration(secs))));
-      if (g.limit.enabled) {
+      if (g.behavior === 'allowance') {
         const used = Anchor.usedSeconds(state, g.id, g.limit.period, now);
         const cap = g.limit.minutes * 60;
         row.append(
           el('div', { class: 'meter' }, el('span', { style: `width:${Math.min(100, (used / cap) * 100)}%;background:${g.color}` })),
           el('p', { class: 'faint', style: 'font-size:12px' },
             t('allowanceUsed', { a: Anchor.formatDuration(used), b: Anchor.formatDuration(cap), per: t(g.limit.period === 'day' ? 'perToday' : 'perHour') })));
+      }
+      // Alert mode: how often it asked, and what you chose.
+      const asked = { shown: 0, dismiss: 0, remind: 0, lock: 0 };
+      for (const k of keys) {
+        const a = state.alerts && state.alerts[k] && state.alerts[k][g.id];
+        if (a) for (const n of Object.keys(asked)) asked[n] += a[n] || 0;
+      }
+      if (asked.shown) {
+        row.append(el('p', { class: 'faint', style: 'font-size:12px' },
+          t('alertStats', { n: asked.shown, dismiss: asked.dismiss, remind: asked.remind, lock: asked.lock })));
       }
       return row;
     });

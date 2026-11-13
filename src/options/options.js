@@ -98,14 +98,11 @@ function card(title, desc, control, ...body) {
 
 function summarize(g) {
   const where = g.mode === 'allow' ? t('whereAllow') : t('nSites', { n: g.sites.length });
-  if (!g.schedule.enabled && !g.limit.enabled) return t('sumAlways', { where });
-  const parts = [];
-  if (g.schedule.enabled) parts.push(t('sumSchedule', { where }));
-  if (g.limit.enabled) {
-    const vars = { where, d: Anchor.formatDuration(g.limit.minutes * 60), per: t(g.limit.period === 'day' ? 'unitDay' : 'unitHour') };
-    parts.push(t(g.schedule.enabled ? 'sumLimitAfter' : 'sumLimit', vars));
-  }
-  return parts.join('; ') + '.';
+  const when = g.schedule.enabled ? t('sumDuringSchedule') : '';
+  if (g.behavior === 'block') return t('sumBlock', { where, when });
+  if (g.behavior === 'alert') return t('sumAlert', { where, when, d: Anchor.formatDuration(g.alert.every * 60) });
+  const per = t(g.limit.period === 'day' ? 'unitDay' : 'unitHour');
+  return t('sumAllowance', { where, when, d: Anchor.formatDuration(g.limit.minutes * 60), per });
 }
 
 // ---------- Sidebar ----------
@@ -281,8 +278,8 @@ function renderEditor() {
   fs.append(
     colorCard(g, changed),
     sitesCard(g, changed),
+    modeCard(g, changed),
     scheduleCard(g, changed),
-    limitCard(g, changed),
     bypassCard(g, changed),
     remindersCard(g, changed),
     lockCard(g, changed),
@@ -376,10 +373,15 @@ function scheduleCard(g, changed) {
     switchEl(sch.enabled, (on) => { sch.enabled = on; changed(true); }, t('useSchedule')), ...body);
 }
 
-function limitCard(g, changed) {
-  const lim = g.limit;
-  const body = [];
-  if (lim.enabled) {
+/** What the group does while active: block, a time allowance, or alerts. */
+function modeCard(g, changed) {
+  const control = segmented([['block', t('modeBlockSites')], ['allowance', t('modeAllowance')], ['alert', t('modeAlert')]],
+    g.behavior, (b) => { g.behavior = b; changed(true); });
+  const body = [control];
+  if (g.behavior === 'block') {
+    body.push(el('p', { class: 'muted' }, t('modeBlockDesc')));
+  } else if (g.behavior === 'allowance') {
+    const lim = g.limit;
     body.push(el('div', { class: 'inline' },
       numberInput(lim.minutes, 1, 1440, (n) => { lim.minutes = n; changed(); }, t('minutes')),
       el('span', {}, t('minutes')),
@@ -392,9 +394,14 @@ function limitCard(g, changed) {
         el('span', {}, t('usedOf', { a: Anchor.formatDuration(used), b: Anchor.formatDuration(lim.minutes * 60) }))),
       el('div', { class: 'meter' }, el('span', { style: `width:${pct}%;background:${g.color}` }))));
     body.push(el('p', { class: 'hint' }, t('allowanceHint')));
+  } else {
+    body.push(el('div', { class: 'inline' },
+      el('span', {}, t('alertAskAfter')),
+      numberInput(g.alert.every, 1, 240, (n) => { g.alert.every = n; changed(); }, t('alertAskAfter')),
+      el('span', {}, t('alertMinutesInARow'))));
+    body.push(el('p', { class: 'hint' }, t('modeAlertDesc')));
   }
-  return card(t('allowance'), t('allowanceDesc'),
-    switchEl(lim.enabled, (on) => { lim.enabled = on; changed(true); }, t('useAllowance')), ...body);
+  return card(t('mode'), t('modeDesc'), null, ...body);
 }
 
 function bypassCard(g, changed) {
@@ -408,6 +415,7 @@ function bypassCard(g, changed) {
       periodSelect(bp.period, (p) => { bp.period = p; changed(); })),
     el('p', { class: 'hint' }, t('breaksHint')),
   ] : [];
+  if (g.behavior === 'alert') body.push(el('p', { class: 'hint' }, t('breaksAlertNote')));
   return card(t('breaks'), t('breaksDesc'),
     switchEl(bp.enabled, (on) => { bp.enabled = on; changed(true); }, t('allowBreaks')), ...body);
 }

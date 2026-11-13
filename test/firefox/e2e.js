@@ -64,6 +64,13 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, headers);
   res.end(`<!doctype html><title>Test site</title><h1>Test site ${req.url}</h1>
     <input id="note"><audio id="snd" src="/silence.wav" loop></audio>
+    <shadow-player id="sp"></shadow-player>
+    <script>
+      // Like Reddit: the player sits inside a closed shadow DOM the page's own code can't reach.
+      const root = document.getElementById('sp').attachShadow({ mode: 'closed' });
+      const a = document.createElement('audio'); a.src = '/silence.wav'; a.loop = true; root.append(a);
+      window.shadowAudio = a;
+    </script>
     <div style="height:4000px;background:linear-gradient(#eef,#fee)"></div>`);
 }).listen(8123, '127.0.0.1');
 
@@ -129,7 +136,7 @@ const server = http.createServer((req, res) => {
       const { settings } = await browser.storage.local.get('settings');
       const g = settings.groups[0];
       Object.assign(g, { name: 'Test', enabled: true, mode: 'block', sites: ['127.0.0.1'] });
-      g.schedule.enabled = false; g.limit.enabled = false; g.lock.method = 'none';
+      g.schedule.enabled = false; g.behavior = 'block'; g.lock.method = 'none';
       g.bypass = { enabled: true, minutes: 5, maxUses: 3, period: 'day' };
       settings.groups[1].enabled = false;
       await browser.storage.local.set({ settings });
@@ -157,7 +164,8 @@ const server = http.createServer((req, res) => {
     await run(async () => {
       const { settings, state } = await browser.storage.local.get(['settings', 'state']);
       const g = settings.groups[0];
-      g.limit = { enabled: true, minutes: 1, period: 'day' };
+      g.behavior = 'allowance';
+      g.limit = { minutes: 1, period: 'day' };
       const s = Anchor.normalizeState(state);
       s.bypass = {};
       s.usage[g.id] = { [Anchor.hourKey()]: 35 };
@@ -167,7 +175,7 @@ const server = http.createServer((req, res) => {
     await goSite('/feed'); await sleep(2500);
     // Page state that a reload would lose.
     await driver.findElement(By.id('note')).sendKeys('half-written comment');
-    await driver.executeScript(`window.scrollTo(0, 1500); window.marker = 'same page'; document.getElementById('snd').play();`);
+    await driver.executeScript(`window.scrollTo(0, 1500); window.marker = 'same page'; document.getElementById('snd').play(); window.shadowAudio.play();`);
     const pill = await text('anchor-focus-time');
     check('countdown shows under 30 s left', !!pill, pill || 'none');
     check('countdown is at the top center', await topCenter('anchor-focus-countdown').catch(() => false));
@@ -181,6 +189,7 @@ const server = http.createServer((req, res) => {
     await sleep(800);
     check('page stays open underneath (no redirect)', (await driver.getCurrentUrl()).startsWith(`${SITE}/feed`), await driver.getCurrentUrl());
     check('audio is paused while locked', await driver.executeScript('return document.getElementById("snd").paused'));
+    check('audio inside a closed shadow DOM is paused too (Reddit)', await driver.executeScript('return window.shadowAudio.paused'));
     await shot('ff-lock-overlay');
 
     await driver.switchTo().frame(await driver.findElement(By.css('anchor-focus-lock iframe')));
@@ -190,9 +199,9 @@ const server = http.createServer((req, res) => {
     await sleep(2000);
     check('break lifts the overlay', (await count('anchor-focus-lock')) === 0);
     const kept = await driver.executeScript(`return { marker: window.marker, y: Math.round(scrollY),
-      note: document.getElementById('note').value, playing: !document.getElementById('snd').paused };`);
+      note: document.getElementById('note').value, playing: !document.getElementById('snd').paused, shadowPlaying: !window.shadowAudio.paused };`);
     check('no reload: page, scroll and typed text kept', kept.marker === 'same page' && kept.y === 1500 && kept.note === 'half-written comment', JSON.stringify(kept));
-    check('audio resumes after the break', kept.playing);
+    check('audio resumes after the break', kept.playing && kept.shadowPlaying);
 
     // A page whose security policy forbids frames: falls back to the block page.
     await goSite('/strict'); await sleep(1500);
@@ -210,6 +219,75 @@ const server = http.createServer((req, res) => {
     check('strict page is still blocked (overlay or block page)', strictUrl.startsWith(EXT) || strictOverlay > 0,
       strictUrl.startsWith(EXT) ? 'fell back to the block page' : 'overlay shown');
 
+    // Alert mode: never blocks; when a visit reaches its time, the alert screen asks.
+    await goExt('src/options/options.html');
+    const siteTabId = await run(async (site) => {
+      const { settings, state } = await browser.storage.local.get(['settings', 'state']);
+      const g = settings.groups[0];
+      Object.assign(g, { behavior: 'alert', alert: { every: 1 }, color: '#e34948' });
+      g.schedule.enabled = false;
+      const s = Anchor.normalizeState(state);
+      s.bypass = {}; s.alertLock = {};
+      await browser.storage.local.set({ settings, state: s });
+      return (await browser.tabs.query({})).find((t) => t.url.startsWith(site)).id;
+    }, SITE);
+    await goSite('/alert'); await sleep(1500);
+    check('alert mode does not block', (await driver.getCurrentUrl()).startsWith(`${SITE}/alert`) && !(await count('anchor-focus-lock')));
+    await driver.executeScript(`window.marker = 'alert page'; window.scrollTo(0, 800);`);
+    const askNow = async (secs) => {
+      await goExt('src/options/options.html');
+      await run(async (tabId, secs) => {
+        const { settings } = await browser.storage.local.get('settings');
+        const gid = settings.groups[0].id;
+        await browser.storage.session.set({ visits: { [tabId]: { [gid]: { secs, askAt: 60, dismissed: false, asking: false } } } });
+      }, siteTabId, secs);
+      await driver.switchTo().window(siteTab); // switching tabs makes Anchor check
+      await sleep(2500);
+    };
+    await askNow(61);
+    check('alert screen appears after the visit time', (await count('anchor-focus-lock')) === 1);
+    await driver.switchTo().frame(await driver.findElement(By.css('anchor-focus-lock iframe')));
+    const alertInfo = await driver.executeScript(`return { shown: !document.getElementById('alertView').hidden,
+      title: document.getElementById('alertTitle').textContent, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+      options: [...document.getElementById('alertLockMin').options].map((o) => o.value).join(',') };`);
+    check('alert asks "been here" with the group color', alertInfo.shown && /been here for 1m/.test(alertInfo.title) && alertInfo.accent === '#e34948', JSON.stringify(alertInfo));
+    check('alert offers 5/10/15/30/60 minutes', alertInfo.options === '5,10,15,30,60');
+    await driver.switchTo().defaultContent();
+    await shot('ff-alert');
+    await driver.switchTo().frame(await driver.findElement(By.css('anchor-focus-lock iframe')));
+    await driver.findElement(By.css('#alertRemindMin option[value="5"]')).click();
+    await driver.findElement(By.id('alertRemind')).click();
+    await driver.switchTo().defaultContent();
+    await sleep(1500);
+    const afterRemind = await driver.executeScript('return { marker: window.marker, y: Math.round(scrollY) }');
+    check('"Remind me" closes the alert without a reload', (await count('anchor-focus-lock')) === 0 && afterRemind.marker === 'alert page' && afterRemind.y === 800, JSON.stringify(afterRemind));
+
+    await askNow(400);
+    await driver.switchTo().frame(await driver.findElement(By.css('anchor-focus-lock iframe')));
+    await driver.findElement(By.id('alertLock')).click();
+    await driver.switchTo().defaultContent();
+    await sleep(2500);
+    await driver.switchTo().frame(await driver.findElement(By.css('anchor-focus-lock iframe')));
+    const lockView = await driver.executeScript(`return { block: !document.getElementById('blockView').hidden,
+      reason: document.getElementById('reason').textContent, breakShown: !document.getElementById('bypass').hidden,
+      disableShown: !document.getElementById('disable').hidden };`);
+    await driver.switchTo().defaultContent();
+    check('"Lock for" turns the alert into the lock screen', lockView.block && /locked/.test(lockView.reason), lockView.reason);
+    check('a lock from an alert has no break or turn-off', !lockView.breakShown && !lockView.disableShown);
+    await shot('ff-alert-lock');
+    await goSite('/elsewhere'); await sleep(1200);
+    check('other sites of the group are locked too', (await driver.getCurrentUrl()).startsWith(EXT), await driver.getCurrentUrl());
+    await goExt('src/options/options.html');
+    const alertCounts = await run(async () => {
+      const { settings, state } = await browser.storage.local.get(['settings', 'state']);
+      const counts = state.alerts[Anchor.dayKey()][settings.groups[0].id];
+      state.alertLock = {}; // end the lock for the next steps
+      settings.groups[0].behavior = 'block';
+      await browser.storage.local.set({ state, settings });
+      return counts;
+    });
+    check('stats count alerts and answers', alertCounts && alertCounts.shown === 2 && alertCounts.remind === 1 && alertCounts.lock === 1, JSON.stringify(alertCounts));
+
     // Holidays: country dropdown; with today as a holiday, "Off on holidays" lets the site open.
     await goExt('src/options/options.html#general');
     const countries = await driver.findElements(By.css('#general select[aria-label="Country"] option'));
@@ -217,7 +295,7 @@ const server = http.createServer((req, res) => {
     await run(async () => {
       const { settings, state } = await browser.storage.local.get(['settings', 'state']);
       settings.country = 'DO';
-      settings.groups[0].limit.enabled = false;
+      settings.groups[0].behavior = 'block';
       // Scheduled all day, every day: blocks, except on a holiday off.
       settings.groups[0].schedule = { enabled: true, rules: [{ days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }] };
       settings.groups[0].holidaysOff = true;
@@ -232,6 +310,7 @@ const server = http.createServer((req, res) => {
     await shot('ff-holidays');
     await goSite('/holiday'); await sleep(1200);
     check('group off on a holiday does not block', (await driver.getCurrentUrl()).startsWith(`${SITE}/holiday`), await driver.getCurrentUrl());
+    check('no reminder on a holiday off', (await count('anchor-focus-card')) === 0 && (await count('anchor-focus-countdown')) === 0);
 
     await goExt('src/popup/popup.html');
     check('popup says the group is off for the holiday', /Off for Test holiday/.test((await text('#groups')) || ''), (await text('#groups') || '').replace(/\s+/g, ' '));
@@ -268,6 +347,9 @@ const server = http.createServer((req, res) => {
       return Services.console.getMessageArray()
         .filter((m) => m instanceof Ci.nsIScriptError && !(m.flags & Ci.nsIScriptError.warningFlag))
         .filter((m) => (m.sourceName || '').includes(arguments[0]))
+        // Firefox notes when a reply arrives after its page has gone (tab navigated away
+        // mid-refresh). That's page lifecycle, not an Anchor bug.
+        .filter((m) => !/(after context unloaded|while context is inactive)/.test(m.errorMessage || ''))
         .map((m) => (m.sourceName || '').split('/').slice(3).join('/') + ':' + m.lineNumber + ' ' + m.errorMessage);`, UUID);
     check('no script errors from Anchor (Browser Console)', errors.length === 0, errors.slice(0, 5).join(' | '));
   } catch (e) {
