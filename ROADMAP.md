@@ -25,6 +25,16 @@
 - [x] **Fix:** a group resting for a holiday no longer shows its time left (reminder, countdown, toolbar badge).
 - [x] **Fix:** the lock screen pauses videos inside shadow DOMs too, like Reddit's player.
 
+## To do
+
+- [ ] **Pause a group for a while: for X days, or until a date.** For vacations, sick days, or a project that ends on a certain day.
+  - In each group's settings and in the popup: *Pause* → **for [1–30] days** or **until [date]**. The date is the day the group comes back, at midnight, so there's no doubt about which day counts.
+  - While paused, the group rests completely: it doesn't block, ask or count time. The popup and settings show "Paused until Mon, Dec 1", and on-page reminders and the toolbar badge stay quiet.
+  - **Resume now** ends the pause early.
+  - Pausing loosens the rules, so it needs the group's unlock protection (PIN or puzzle), like turning it off. Resuming never does.
+  - When the pause ends, the group simply picks up again on its own.
+  - Translated to Spanish; covered by the unit and Firefox tests.
+
 ## Ideas
 
 - Holidays for more countries
